@@ -71,7 +71,12 @@
                     <td><button onclick="deleteLink('${link._id}')" style="background:#ef4444; color:white; border:none; padding:5px 10px; border-radius:8px; cursor:pointer;">Hapus</button></td>
                 `;
                 list.appendChild(tr);
-                new QRCode(document.getElementById(`qr-${link._id}`), { text: fullUrl, width: 40, height: 40 });
+                new QRCode(document.getElementById(`qr-${link._id}`), { 
+    text: fullUrl, 
+    width: 100, // Naikkan resolusi internal
+    height: 100, 
+    correctLevel: QRCode.CorrectLevel.H // High error correction agar lebih mudah di-scan
+});
             });
             document.getElementById('total-links').innerText = links.length;
             document.getElementById('total-clicks').innerText = clicks;

@@ -62,3 +62,28 @@ button {
     background: white; color: var(--text-dark); border: 2px solid #E5EBE5;
     padding: 12px; border-radius: 15px; text-decoration: none; font-weight: 600;
 }
+
+/* Membuat gambar QR tetap tajam walaupun ukurannya kecil */
+.qr-thumbnail img {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    -ms-interpolation-mode: nearest-neighbor;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Memperbesar sedikit area klik agar mudah ditekan */
+.qr-thumbnail {
+    cursor: pointer;
+    border: 1.5px solid var(--accent);
+    border-radius: 8px;
+    padding: 2px;
+    background: white;
+    display: inline-block;
+    transition: all 0.2s ease;
+}
+
+.qr-thumbnail:hover {
+    border-color: var(--primary);
+    transform: scale(1.1);
+}
