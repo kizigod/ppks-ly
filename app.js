@@ -31,7 +31,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-aapp.use(session({
+app.use(session({
     secret: process.env.SESSION_SECRET || 'rahasia-ppks-ly',
     resave: false,
     saveUninitialized: false,
