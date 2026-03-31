@@ -30,6 +30,16 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+const path = require('path');
+
+// Letakkan ini di atas semua route API
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Penting: Pastikan rute utama melayani index.html
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // 4. STRATEGY GOOGLE (Perbaikan Callback & Proxy)
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
