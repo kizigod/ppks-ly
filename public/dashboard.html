@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard PPKS.ly</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container dashboard-wide">
+        <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <div>
+                <h1>Dashboard</h1>
+                <p id="welcome-msg">Memuat data user...</p>
+            </div>
+            <a href="/logout" class="btn-logout">Keluar</a>
+        </header>
+
+        <div class="stats-container">
+            <div class="stat-box">
+                <span class="stat-label">Total Link</span>
+                <span id="total-links" class="stat-value">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Total Klik</span>
+                <span id="total-clicks" class="stat-value">0</span>
+            </div>
+        </div>
+
+        <table class="link-table">
+            <thead>
+                <tr>
+                    <th>Link Pendek</th>
+                    <th>Tujuan (Original)</th>
+                    <th>Klik</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody id="links-tbody">
+                </tbody>
+        </table>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>

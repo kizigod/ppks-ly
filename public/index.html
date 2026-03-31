@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPKS.Ly - Pemendek URL & QR Code</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>PPKS.ly</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 20px;">Pendekkan link dan buat QR Code instan</p>
+
+        <form id="shorten-form">
+            <input type="url" id="longUrl" placeholder="Masukkan URL panjang (https://...)" required>
+            <input type="text" id="customCode" placeholder="Custom Nama (Contoh: link-saya)">
+            <button type="submit">Pendekkan!</button>
+        </form>
+
+        <div id="result"></div>
+
+        <hr style="margin: 40px 0 20px 0; border: 0; border-top: 1px solid #eee;">
+
+        <div id="auth-section">
+            <div id="login-section" style="text-align: center;">
+                <p style="font-size: 0.85rem; color: #9ca3af; margin-bottom: 15px;">
+                    Simpan dan kelola semua link kamu secara permanen
+                </p>
+                <a href="/auth/google" class="btn-google">
+                    <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" width="20" height="20" alt="Google Logo">
+                    Masuk dengan Google
+                </a>
+            </div>
+
+            <div id="user-profile" style="display: none; text-align: center;">
+                <p>Masuk sebagai <strong id="user-name"></strong>! 👋</p>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
+                    <a href="/dashboard.html" class="btn-dashboard-small">Buka Dashboard</a>
+                    <a href="/logout" class="btn-logout-link">Keluar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Fungsi Cek Status Login saat Page Load
+        async function checkLoginStatus() {
+            try {
+                const res = await fetch('/api/user/status');
+                const data = await res.json();
+                
+                if (data.loggedIn) {
+                    document.getElementById('login-section').style.display = 'none';
+                    document.getElementById('user-profile').style.display = 'block';
+                    document.getElementById('user-name').innerText = data.user.displayName;
+                }
+            } catch (err) {
+                console.log("Belum login atau server mati");
+            }
+        }
+
+        checkLoginStatus();
+
+        // 2. Logika Submit Form
+        document.getElementById('shorten-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const longUrl = document.getElementById('longUrl').value;
+            const customCode = document.getElementById('customCode').value;
+            const resultDiv = document.getElementById('result');
+
+            // Tampilkan loading sederhana
+            resultDiv.innerHTML = '<p style="text-align:center;">Memproses...</p>';
+
+            try {
+                const res = await fetch('/api/shorten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ longUrl, customCode })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="result-card" style="animation: fadeIn 0.5s ease;">
+                            <p style="font-weight: bold; color: #10b981;">✅ Link Pendek Siap!</p>
+                            
+                            <div style="margin: 15px 0;">
+                                <a href="${data.shortUrl}" target="_blank" class="clickable-link">
+                                    ${data.shortUrl}
+                                </a>
+                            </div>
+
+                            <div class="qr-container" style="background: white; padding: 15px; border-radius: 12px; margin-top: 15px;">
+                                <img src="${data.qrData}" alt="QR Code" style="width: 150px; border: 2px solid #eee;">
+                                <br>
+                                <a href="${data.qrData}" download="QR-${customCode || 'ppks'}.png" class="btn-download" style="text-decoration: none; font-size: 0.8rem; color: #4F46E5; font-weight: bold;">
+                                    ⬇️ Download QR Code
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<p style="color: #ef4444; text-align: center;">❌ ${data.message || 'Terjadi kesalahan'}</p>`;
+                }
+            } catch (err) {
+                resultDiv.innerHTML = `<p style="color: #ef4444; text-align: center;">❌ Gagal menghubungkan ke server</p>`;
+            }
+        };
+    </script>
+</body>
+</html>
