@@ -14,29 +14,41 @@ const User = require('./models/User');
 
 const app = express();
 
-// 1. MIDDLEWARE DASAR
+// 1. KONEKSI DATABASE (Ditingkatkan untuk Vercel)
+const connectDB = async () => {
+    if (mongoose.connection.readyState >= 1) return;
+    try {
+        await mongoose.connect(process.env.MONGO_URI);
+        console.log('✅ Terhubung ke MongoDB');
+    } catch (err) {
+        console.error('❌ MongoDB Error:', err);
+    }
+};
+connectDB();
+
+// 2. MIDDLEWARE DASAR
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 2. MIDDLEWARE SESSION (Gunakan MemoryStore bawaan untuk Vercel)
+// 3. MIDDLEWARE SESSION
 app.use(session({
     secret: process.env.SESSION_SECRET || 'secret-ppks-ly',
     resave: false,
     saveUninitialized: false,
     cookie: { 
-        secure: process.env.NODE_ENV === 'production', // true jika sudah https (Vercel)
+        secure: process.env.NODE_ENV === 'production',
         maxAge: 24 * 60 * 60 * 1000 
     }
 }));
 
-// 3. MIDDLEWARE PASSPORT
+// 4. MIDDLEWARE PASSPORT
 app.use(passport.initialize());
 app.use(passport.session());
 
-// 4. STRATEGY GOOGLE (Dinamis untuk Local & Vercel)
+// 5. STRATEGY GOOGLE (Kunci Callback agar tidak Mismatch)
 const callbackURL = process.env.NODE_ENV === 'production' 
-    ? `${process.env.BASE_URL}/auth/google/callback` 
+    ? `https://ppks-ly.vercel.app/auth/google/callback` 
     : "http://localhost:3000/auth/google/callback";
 
 passport.use(new GoogleStrategy({
@@ -46,6 +58,7 @@ passport.use(new GoogleStrategy({
     proxy: true
 }, async (accessToken, refreshToken, profile, done) => {
     try {
+        await connectDB(); // Pastikan DB konek
         let user = await User.findOne({ googleId: profile.id });
         if (!user) {
             user = await User.create({
@@ -57,23 +70,30 @@ passport.use(new GoogleStrategy({
         }
         return done(null, user);
     } catch (err) { 
+        console.error("Error di Strategy:", err);
         return done(err, null); 
     }
 }));
 
 passport.serializeUser((user, done) => done(null, user.id));
-passport.deserializeUser((id, done) => {
-    User.findById(id).then(user => done(null, user));
+
+// PERBAIKAN: deserializeUser menggunakan async/await agar tidak Server Error
+passport.deserializeUser(async (id, done) => {
+    try {
+        await connectDB();
+        const user = await User.findById(id);
+        done(null, user);
+    } catch (err) {
+        done(err, null);
+    }
 });
 
 // --- ROUTES ---
 
-// Route Utama (Sajikan index.html)
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Cek Status Login
 app.get('/api/user/status', (req, res) => {
     if (req.isAuthenticated()) {
         res.json({ loggedIn: true, user: req.user });
@@ -82,8 +102,8 @@ app.get('/api/user/status', (req, res) => {
     }
 });
 
-// Auth Routes
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
 app.get('/auth/google/callback', 
     passport.authenticate('google', { failureRedirect: '/' }),
     (req, res) => { res.redirect('/dashboard.html'); }
@@ -93,21 +113,21 @@ app.get('/logout', (req, res) => {
     req.logout(() => res.redirect('/'));
 });
 
-// Data link milik user
 app.get('/api/user/links', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: 'Login dulu' });
     try {
+        await connectDB();
         const links = await Url.find({ userId: req.user._id }).sort({ createdAt: -1 });
         res.json(links);
-    } catch (err) { res.status(500).send(err); }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Membuat Link Baru
 app.post('/api/shorten', async (req, res) => {
     const { longUrl, customCode } = req.body;
     const shortCode = (customCode && customCode.trim()) || nanoid(6);
 
     try {
+        await connectDB();
         let existing = await Url.findOne({ shortCode });
         if (existing) return res.status(400).json({ message: 'Nama sudah dipakai!' });
 
@@ -119,22 +139,17 @@ app.post('/api/shorten', async (req, res) => {
         await newUrl.save();
 
         const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
-        const qrCodeData = await QRCode.toDataURL(shortUrl, {
-            errorCorrectionLevel: 'H',
-            margin: 1,
-            color: { dark: '#4F46E5', light: '#FFFFFF' }
-        });
+        const qrCodeData = await QRCode.toDataURL(shortUrl);
 
         res.json({ shortUrl, qrData: qrCodeData });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Gagal memproses data' });
+        res.status(500).json({ message: 'Gagal memproses data', error: err.message });
     }
 });
 
-// Redirect Route
 app.get('/:code', async (req, res) => {
     try {
+        await connectDB();
         const url = await Url.findOne({ shortCode: req.params.code });
         if (url) {
             url.clicks++;
@@ -145,15 +160,8 @@ app.get('/:code', async (req, res) => {
     } catch (err) { res.status(500).send('Server error'); }
 });
 
-// Database Connection
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('✅ Terhubung ke MongoDB'))
-    .catch(err => console.error('❌ MongoDB Error:', err));
-
-// EXPORT UNTUK VERCEL
 module.exports = app;
 
-// Jalankan server jika bukan di produksi
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => console.log(`Server jalan di http://localhost:${PORT}`));
