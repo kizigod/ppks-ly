@@ -1,4 +1,4 @@
-
+require('dotenv').config();
 const QRCode = require('qrcode'); 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -14,7 +14,7 @@ const User = require('./models/User');
 
 const app = express();
 
-// --- 1. KONEKSI DATABASE (STRATEGI VERCEL) ---
+// --- 1. KONEKSI DATABASE (STRATEGI SERVERLESS) ---
 const connectDB = async () => {
     if (mongoose.connection.readyState >= 1) return;
     try {
@@ -31,14 +31,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Konfigurasi Session Khusus Vercel (HTTPS & Proxy)
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'rahasia-ppks-ly',
+    secret: process.env.SESSION_SECRET || 'sawit-rahasia-usu',
     resave: false,
     saveUninitialized: false,
-    proxy: true, // WAJIB: Beritahu session kalau kita di belakang proxy Vercel
+    proxy: true, 
     cookie: { 
-        secure: true, // Harus true karena Vercel pakai HTTPS
-        sameSite: 'none', // WAJIB: Supaya cookie tidak hilang saat redirect dari Google
+        secure: true, 
+        sameSite: 'none',
         maxAge: 24 * 60 * 60 * 1000 
     }
 }));
@@ -85,7 +86,7 @@ passport.deserializeUser(async (id, done) => {
 
 // --- 4. ROUTES ---
 
-// Auth
+// Auth Routes
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 app.get('/auth/google/callback', 
     passport.authenticate('google', { failureRedirect: '/' }),
@@ -93,13 +94,14 @@ app.get('/auth/google/callback',
 );
 app.get('/logout', (req, res) => req.logout(() => res.redirect('/')));
 
-// API User & Links
+// API User Status
 app.get('/api/user/status', (req, res) => {
     res.json(req.isAuthenticated() ? { loggedIn: true, user: req.user } : { loggedIn: false });
 });
 
+// Ambil Semua Link Milik User yang Sedang Login
 app.get('/api/user/links', async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Login dulu' });
+    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Harus login' });
     try {
         await connectDB();
         const links = await Url.find({ userId: req.user._id }).sort({ createdAt: -1 });
@@ -107,7 +109,17 @@ app.get('/api/user/links', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Create Shortlink
+// Hapus Link
+app.delete('/api/link/:id', async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Harus login' });
+    try {
+        await connectDB();
+        await Url.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+        res.json({ message: 'Link dihapus' });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// CREATE SHORTLINK (Bisa dari Home atau Dashboard)
 app.post('/api/shorten', async (req, res) => {
     const { longUrl, customCode } = req.body;
     const shortCode = (customCode && customCode.trim()) || nanoid(6);
@@ -115,11 +127,12 @@ app.post('/api/shorten', async (req, res) => {
     try {
         await connectDB();
         const existing = await Url.findOne({ shortCode });
-        if (existing) return res.status(400).json({ message: 'Nama sudah dipakai!' });
+        if (existing) return res.status(400).json({ message: 'Nama/Code sudah dipakai!' });
 
         const newUrl = new Url({ 
             originalUrl: longUrl, 
             shortCode,
+            // Jika user sudah login, otomatis simpan ID-nya
             userId: req.isAuthenticated() ? req.user._id : null 
         });
         await newUrl.save();
@@ -128,14 +141,13 @@ app.post('/api/shorten', async (req, res) => {
         const qrData = await QRCode.toDataURL(shortUrl);
         res.json({ shortUrl, qrData });
     } catch (err) {
-        res.status(500).json({ message: 'Gagal memproses', error: err.message });
+        res.status(500).json({ message: 'Gagal memproses link', error: err.message });
     }
 });
 
-// REDIRECT ROUTE (FIX ERROR 500)
+// REDIRECT ROUTE (FIX ERROR 500 & Static Conflict)
 app.get('/:code', async (req, res) => {
     const { code } = req.params;
-    // Abaikan jika request file statis atau folder sistem
     if (code.includes('.') || ['api', 'auth', 'favicon.ico'].includes(code)) return;
 
     try {
@@ -145,13 +157,13 @@ app.get('/:code', async (req, res) => {
             await Url.updateOne({ _id: url._id }, { $inc: { clicks: 1 } });
             return res.redirect(url.originalUrl);
         }
-        res.status(404).send('Link tidak ditemukan.');
+        res.status(404).send('<h1>404</h1><p>Link tidak ditemukan.</p>');
     } catch (err) {
         res.status(500).send(`Server Error: ${err.message}`);
     }
 });
 
-// EXPORT
+// EXPORT UNTUK VERCEL
 module.exports = app;
 
 if (process.env.NODE_ENV !== 'production') {
