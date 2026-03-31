@@ -1,4 +1,4 @@
-require('dotenv').config();
+
 const QRCode = require('qrcode'); 
 const express = require('express');
 const mongoose = require('mongoose');
