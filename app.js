@@ -31,12 +31,14 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(session({
+aapp.use(session({
     secret: process.env.SESSION_SECRET || 'rahasia-ppks-ly',
     resave: false,
     saveUninitialized: false,
+    proxy: true, // WAJIB: Beritahu session kalau kita di belakang proxy Vercel
     cookie: { 
-        secure: process.env.NODE_ENV === 'production',
+        secure: true, // Harus true karena Vercel pakai HTTPS
+        sameSite: 'none', // WAJIB: Supaya cookie tidak hilang saat redirect dari Google
         maxAge: 24 * 60 * 60 * 1000 
     }
 }));
