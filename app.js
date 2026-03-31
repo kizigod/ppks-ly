@@ -14,7 +14,7 @@ const User = require('./models/User');
 
 const app = express();
 
-// 1. KONEKSI DATABASE (Fungsi Reusable untuk Serverless)
+// --- 1. KONEKSI DATABASE (STRATEGI VERCEL) ---
 const connectDB = async () => {
     if (mongoose.connection.readyState >= 1) return;
     try {
@@ -24,18 +24,15 @@ const connectDB = async () => {
         console.error('❌ MongoDB Error:', err);
     }
 };
-
-// Jalankan koneksi di awal
 connectDB();
 
-// 2. MIDDLEWARE DASAR
+// --- 2. MIDDLEWARE ---
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 3. MIDDLEWARE SESSION
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'secret-ppks-ly',
+    secret: process.env.SESSION_SECRET || 'rahasia-ppks-ly',
     resave: false,
     saveUninitialized: false,
     cookie: { 
@@ -44,19 +41,16 @@ app.use(session({
     }
 }));
 
-// 4. MIDDLEWARE PASSPORT
 app.use(passport.initialize());
 app.use(passport.session());
 
-// 5. STRATEGY GOOGLE (Kunci Callback agar tidak Mismatch)
-const callbackURL = process.env.NODE_ENV === 'production' 
-    ? `https://ppks-ly.vercel.app/auth/google/callback` 
-    : "http://localhost:3000/auth/google/callback";
+// --- 3. GOOGLE OAUTH STRATEGY ---
+const OFFICIAL_DOMAIN = "https://ppks-ly.vercel.app";
 
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: callbackURL,
+    callbackURL: `${OFFICIAL_DOMAIN}/auth/google/callback`,
     proxy: true
 }, async (accessToken, refreshToken, profile, done) => {
     try {
@@ -72,13 +66,11 @@ passport.use(new GoogleStrategy({
         }
         return done(null, user);
     } catch (err) { 
-        console.error("Error di Strategy:", err);
         return done(err, null); 
     }
 }));
 
 passport.serializeUser((user, done) => done(null, user.id));
-
 passport.deserializeUser(async (id, done) => {
     try {
         await connectDB();
@@ -89,35 +81,21 @@ passport.deserializeUser(async (id, done) => {
     }
 });
 
-// --- ROUTES ---
+// --- 4. ROUTES ---
 
-// Halaman Utama
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Cek Status Login
-app.get('/api/user/status', (req, res) => {
-    if (req.isAuthenticated()) {
-        res.json({ loggedIn: true, user: req.user });
-    } else {
-        res.json({ loggedIn: false });
-    }
-});
-
-// Auth Routes
+// Auth
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-
 app.get('/auth/google/callback', 
     passport.authenticate('google', { failureRedirect: '/' }),
-    (req, res) => { res.redirect('/dashboard.html'); }
+    (req, res) => res.redirect('/dashboard.html')
 );
+app.get('/logout', (req, res) => req.logout(() => res.redirect('/')));
 
-app.get('/logout', (req, res) => {
-    req.logout(() => res.redirect('/'));
+// API User & Links
+app.get('/api/user/status', (req, res) => {
+    res.json(req.isAuthenticated() ? { loggedIn: true, user: req.user } : { loggedIn: false });
 });
 
-// Ambil Link User
 app.get('/api/user/links', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: 'Login dulu' });
     try {
@@ -127,14 +105,14 @@ app.get('/api/user/links', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Buat Link Baru
+// Create Shortlink
 app.post('/api/shorten', async (req, res) => {
     const { longUrl, customCode } = req.body;
     const shortCode = (customCode && customCode.trim()) || nanoid(6);
 
     try {
         await connectDB();
-        let existing = await Url.findOne({ shortCode });
+        const existing = await Url.findOne({ shortCode });
         if (existing) return res.status(400).json({ message: 'Nama sudah dipakai!' });
 
         const newUrl = new Url({ 
@@ -144,44 +122,36 @@ app.post('/api/shorten', async (req, res) => {
         });
         await newUrl.save();
 
-        // Pastikan BASE_URL tidak punya double slash
-        const cleanBaseUrl = process.env.BASE_URL.replace(/\/$/, "");
-        const shortUrl = `${cleanBaseUrl}/${shortCode}`;
-        const qrCodeData = await QRCode.toDataURL(shortUrl);
-
-        res.json({ shortUrl, qrData: qrCodeData });
+        const shortUrl = `${OFFICIAL_DOMAIN}/${shortCode}`;
+        const qrData = await QRCode.toDataURL(shortUrl);
+        res.json({ shortUrl, qrData });
     } catch (err) {
-        res.status(500).json({ message: 'Gagal memproses data', error: err.message });
+        res.status(500).json({ message: 'Gagal memproses', error: err.message });
     }
 });
 
-// REDIRECT ROUTE (Sangat Penting!)
+// REDIRECT ROUTE (FIX ERROR 500)
 app.get('/:code', async (req, res) => {
     const { code } = req.params;
-
-    // Abaikan permintaan file statis agar tidak tabrakan
-    if (code.includes('.') || code === 'api' || code === 'auth') return;
+    // Abaikan jika request file statis atau folder sistem
+    if (code.includes('.') || ['api', 'auth', 'favicon.ico'].includes(code)) return;
 
     try {
         await connectDB();
         const url = await Url.findOne({ shortCode: code });
-        
         if (url) {
-            // Update klik secara atomik
             await Url.updateOne({ _id: url._id }, { $inc: { clicks: 1 } });
             return res.redirect(url.originalUrl);
         }
-        
-        return res.status(404).send('<h1>404</h1><p>Link tidak ditemukan.</p>');
+        res.status(404).send('Link tidak ditemukan.');
     } catch (err) {
-        console.error('Redirect Error:', err);
-        res.status(500).send("Server Error saat mencoba mengalihkan link.");
+        res.status(500).send(`Server Error: ${err.message}`);
     }
 });
 
+// EXPORT
 module.exports = app;
 
 if (process.env.NODE_ENV !== 'production') {
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(`Server jalan di http://localhost:${PORT}`));
+    app.listen(3000, () => console.log(`Server jalan di http://localhost:3000`));
 }
