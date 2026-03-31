@@ -2,44 +2,107 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard PPKS.ly</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard PPKS.Ly</title>
+    <link rel="stylesheet" href="style.css?v=1.3">
 </head>
 <body>
     <div class="container dashboard-wide">
-        <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-            <div>
-                <h1>Dashboard</h1>
-                <p id="welcome-msg">Memuat data user...</p>
-            </div>
-            <a href="/logout" class="btn-logout">Keluar</a>
-        </header>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1 style="margin:0;">Dashboard</h1>
+            <a href="/" style="font-size: 0.8rem; color: var(--primary); text-decoration: none; font-weight: 600;">← Kembali ke Home</a>
+        </div>
+
+        <div style="background: #F7FAF7; padding: 20px; border-radius: 20px; border: 1px solid rgba(45,90,39,0.1); margin-bottom: 30px;">
+            <h3 style="margin-top: 0; color: var(--primary);">Buat Link Baru</h3>
+            <form id="shorten-form" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <input type="url" id="longUrl" placeholder="Tempel link panjang..." required style="flex: 2; margin-bottom: 0;">
+                <input type="text" id="customCode" placeholder="Nama custom..." style="flex: 1; margin-bottom: 0;">
+                <button type="submit" style="width: auto; padding: 0 25px;">Shorten!</button>
+            </form>
+            <div id="result"></div>
+        </div>
 
         <div class="stats-container">
             <div class="stat-box">
-                <span class="stat-label">Total Link</span>
-                <span id="total-links" class="stat-value">0</span>
+                <span class="stat-value" id="total-links">0</span>
+                <p>Total Link</p>
             </div>
             <div class="stat-box">
-                <span class="stat-label">Total Klik</span>
-                <span id="total-clicks" class="stat-value">0</span>
+                <span class="stat-value" id="total-clicks">0</span>
+                <p>Total Klik</p>
             </div>
         </div>
 
-        <table class="link-table">
-            <thead>
-                <tr>
-                    <th>Link Pendek</th>
-                    <th>Tujuan (Original)</th>
-                    <th>Klik</th>
-                    <th>Aksi</th>
-                </tr>
-            </thead>
-            <tbody id="links-tbody">
-                </tbody>
-        </table>
+        <h3 style="color: var(--primary);">Riwayat Link Kamu</h3>
+        <div style="overflow-x: auto;">
+            <table class="link-table">
+                <thead>
+                    <tr>
+                        <th>Link Pendek</th>
+                        <th>Klik</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="link-list">
+                    </tbody>
+            </table>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="/logout" class="btn-logout-link" style="color: #ef4444;">Keluar dari Akun</a>
+        </div>
     </div>
 
-    <script src="dashboard.js"></script>
+    <script>
+        // Load Data Link User
+        async function loadLinks() {
+            const res = await fetch('/api/user/links');
+            const links = await res.json();
+            const list = document.getElementById('link-list');
+            let clicks = 0;
+            
+            list.innerHTML = links.map(link => {
+                clicks += link.clicks;
+                return `
+                <tr>
+                    <td><a href="/${link.shortCode}" target="_blank" style="font-weight:800; color:var(--primary); text-decoration:none;">/${link.shortCode}</a></td>
+                    <td><span class="badge">${link.clicks}</span></td>
+                    <td><button onclick="deleteLink('${link._id}')" class="btn-delete" style="background:#ef4444; padding:5px 10px; border-radius:8px; color:white; border:none; cursor:pointer;">Hapus</button></td>
+                </tr>`;
+            }).join('');
+            
+            document.getElementById('total-links').innerText = links.length;
+            document.getElementById('total-clicks').innerText = clicks;
+        }
+
+        // Hapus Link
+        async function deleteLink(id) {
+            if(confirm('Hapus link ini?')) {
+                await fetch(`/api/link/${id}`, { method: 'DELETE' });
+                loadLinks();
+            }
+        }
+
+        // Handle Shorten di Dashboard
+        document.getElementById('shorten-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const longUrl = document.getElementById('longUrl').value;
+            const customCode = document.getElementById('customCode').value;
+            const res = await fetch('/api/shorten', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ longUrl, customCode })
+            });
+            if (res.ok) {
+                alert('Link berhasil dibuat!');
+                loadLinks(); // Refresh tabel otomatis
+                document.getElementById('longUrl').value = '';
+                document.getElementById('customCode').value = '';
+            }
+        };
+
+        loadLinks();
+    </script>
 </body>
 </html>
