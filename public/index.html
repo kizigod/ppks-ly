@@ -62,6 +62,12 @@
     </div>
 
     <script>
+
+        async function trackVisitor() {
+    await fetch('/api/visitor/track');
+}
+trackVisitor();
+
         // 1. Fungsi Modal
         function showModal(url, qr) {
             document.getElementById('modal-url').innerText = url;

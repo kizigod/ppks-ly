@@ -8,6 +8,29 @@ const session = require('express-session');
 const passport = require('passport');
 const path = require('path');
 
+// Tambahkan Model Visitor (Bisa di app.js atau file terpisah)
+const VisitorSchema = new mongoose.Schema({
+    ip: String,
+    timestamp: { type: Date, default: Date.now }
+});
+const Visitor = mongoose.model('Visitor', VisitorSchema);
+
+// Tambahkan rute untuk mencatat kunjungan
+app.get('/api/visitor/track', async (req, res) => {
+    try {
+        await connectDB();
+        // Simpan IP (opsional, untuk hitung unik visitor)
+        const newVisitor = new Visitor({ ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+        await newVisitor.save();
+        
+        // Hitung total semua visitor
+        const count = await Visitor.countDocuments();
+        res.json({ totalVisitors: count });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // IMPORT MODEL
 const Url = require('./models/Url');
 const User = require('./models/User'); 
