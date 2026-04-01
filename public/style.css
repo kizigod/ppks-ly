@@ -101,9 +101,57 @@ button:hover { background: var(--primary-hover); }
 .stat-value { display: block; font-size: 2rem; font-weight: 800; color: var(--primary); }
 
 /* --- TABLE RESPONSIVE --- */
-.link-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-.link-table th { background: #F7FAF7; color: var(--primary); padding: 12px; text-align: left; }
-.link-table td { padding: 12px; border-bottom: 1px solid #eee; }
+/* --- TABLE RESPONSIVE DENGAN ROUND CORNER --- */
+
+/* 1. Pembungkus Tabel (Wajib Ada) */
+.table-wrapper {
+    width: 100%;
+    overflow-x: auto; /* Agar bisa di-scroll ke samping di HP */
+    border-radius: 15px; /* Sudut melengkung */
+    border: 1px solid #E5EBE5;
+    background: #FFFFFF;
+    margin-top: 1.5rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+.link-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 500px; /* Memaksa scroll horizontal di HP agar tidak sesak */
+}
+
+.link-table th {
+    background: #F7FAF7;
+    color: var(--primary);
+    padding: 15px 12px;
+    text-align: left;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.link-table td {
+    padding: 12px;
+    border-bottom: 1px solid #F0F4F0;
+    font-size: 0.9rem;
+    color: var(--text-dark);
+}
+
+/* Menghilangkan border bawah pada baris terakhir agar tidak merusak lengkungan */
+.link-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Media Query Khusus HP Potrait */
+@media (max-width: 600px) {
+    .table-wrapper {
+        border-radius: 12px; /* Sedikit lebih kecil di HP agar pas */
+    }
+    
+    .link-table th, .link-table td {
+        padding: 10px 8px; /* Padding lebih ramping */
+    }
+}
 
 /* QR THUMBNAIL SHARPENING */
 .qr-thumbnail { 
