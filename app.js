@@ -13,7 +13,10 @@ const VisitorSchema = new mongoose.Schema({
     ip: String,
     timestamp: { type: Date, default: Date.now }
 });
-const Visitor = mongoose.model('Visitor', VisitorSchema);
+const Visitor = mongoose.models.Visitor || mongoose.model('Visitor', new mongoose.Schema({
+    ip: String,
+    timestamp: { type: Date, default: Date.now }
+}));
 
 // Tambahkan rute untuk mencatat kunjungan
 app.get('/api/visitor/track', async (req, res) => {
