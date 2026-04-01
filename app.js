@@ -8,39 +8,20 @@ const session = require('express-session');
 const passport = require('passport');
 const path = require('path');
 
-// Tambahkan Model Visitor (Bisa di app.js atau file terpisah)
-const VisitorSchema = new mongoose.Schema({
-    ip: String,
-    timestamp: { type: Date, default: Date.now }
-});
+// IMPORT MODEL (Pastikan file ini ada di folder models)
+const Url = require('./models/Url');
+const User = require('./models/User'); 
+
+// --- INISIALISASI APP (Wajib di Atas Sebelum Pakai app.use atau app.get) ---
+const app = express();
+
+// --- MODEL VISITOR (Sistem Pencegah Crash Vercel) ---
 const Visitor = mongoose.models.Visitor || mongoose.model('Visitor', new mongoose.Schema({
     ip: String,
     timestamp: { type: Date, default: Date.now }
 }));
 
-// Tambahkan rute untuk mencatat kunjungan
-app.get('/api/visitor/track', async (req, res) => {
-    try {
-        await connectDB();
-        // Simpan IP (opsional, untuk hitung unik visitor)
-        const newVisitor = new Visitor({ ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
-        await newVisitor.save();
-        
-        // Hitung total semua visitor
-        const count = await Visitor.countDocuments();
-        res.json({ totalVisitors: count });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// IMPORT MODEL
-const Url = require('./models/Url');
-const User = require('./models/User'); 
-
-const app = express();
-
-// --- 1. KONEKSI DATABASE (STRATEGI SERVERLESS) ---
+// --- 1. KONEKSI DATABASE ---
 const connectDB = async () => {
     if (mongoose.connection.readyState >= 1) return;
     try {
@@ -57,7 +38,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Konfigurasi Session Khusus Vercel (HTTPS & Proxy)
 app.use(session({
     secret: process.env.SESSION_SECRET || 'sawit-rahasia-usu',
     resave: false,
@@ -112,6 +92,21 @@ passport.deserializeUser(async (id, done) => {
 
 // --- 4. ROUTES ---
 
+// Route Visitor (Ditaruh di sini setelah app didefinisikan)
+app.get('/api/visitor/track', async (req, res) => {
+    try {
+        await connectDB();
+        const newVisitor = new Visitor({ 
+            ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress 
+        });
+        await newVisitor.save();
+        const count = await Visitor.countDocuments();
+        res.json({ totalVisitors: count });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Auth Routes
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 app.get('/auth/google/callback', 
@@ -120,12 +115,10 @@ app.get('/auth/google/callback',
 );
 app.get('/logout', (req, res) => req.logout(() => res.redirect('/')));
 
-// API User Status
 app.get('/api/user/status', (req, res) => {
     res.json(req.isAuthenticated() ? { loggedIn: true, user: req.user } : { loggedIn: false });
 });
 
-// Ambil Semua Link Milik User yang Sedang Login
 app.get('/api/user/links', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: 'Harus login' });
     try {
@@ -135,7 +128,6 @@ app.get('/api/user/links', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Hapus Link
 app.delete('/api/link/:id', async (req, res) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: 'Harus login' });
     try {
@@ -145,11 +137,9 @@ app.delete('/api/link/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// CREATE SHORTLINK (Bisa dari Home atau Dashboard)
 app.post('/api/shorten', async (req, res) => {
     const { longUrl, customCode } = req.body;
     const shortCode = (customCode && customCode.trim()) || nanoid(6);
-
     try {
         await connectDB();
         const existing = await Url.findOne({ shortCode });
@@ -158,7 +148,6 @@ app.post('/api/shorten', async (req, res) => {
         const newUrl = new Url({ 
             originalUrl: longUrl, 
             shortCode,
-            // Jika user sudah login, otomatis simpan ID-nya
             userId: req.isAuthenticated() ? req.user._id : null 
         });
         await newUrl.save();
@@ -171,11 +160,9 @@ app.post('/api/shorten', async (req, res) => {
     }
 });
 
-// REDIRECT ROUTE (FIX ERROR 500 & Static Conflict)
 app.get('/:code', async (req, res) => {
     const { code } = req.params;
     if (code.includes('.') || ['api', 'auth', 'favicon.ico'].includes(code)) return;
-
     try {
         await connectDB();
         const url = await Url.findOne({ shortCode: code });
@@ -189,7 +176,6 @@ app.get('/:code', async (req, res) => {
     }
 });
 
-// EXPORT UNTUK VERCEL
 module.exports = app;
 
 if (process.env.NODE_ENV !== 'production') {
