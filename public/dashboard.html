@@ -59,52 +59,82 @@
         </div>
     </div>
 
-   <script>
-    // 1. Fungsi Utama untuk Menampilkan Modal Berhasil (Sama dengan Index)
-    function showModal(url, qr, shortCode) {
+  <script>
+    // 1. Fungsi Menampilkan Modal (Dibuat sama persis dengan UI Gambar)
+    function showModal(url, shortCode) {
         Swal.fire({
-            title: 'Link Ready! 🚀',
+            showConfirmButton: false, // Kita buat tombol custom di dalam HTML
+            width: '420px',
+            background: '#ffffff',
+            padding: '20px',
+            borderRadius: '25px',
             html: `
-                <div style="display:flex; flex-direction:column; align-items:center; gap:15px; padding-top:10px;">
-                    <div style="text-align:center;">
-                        <img src="${qr}" id="qrImg" style="width:160px; border-radius:15px; border:4px solid #f0f4f0; image-rendering: pixelated;">
-                        <p style="font-size:0.7rem; margin-top:5px; color:#666; font-weight:600;">QR CODE</p>
-                    </div>
+                <div style="position:relative; text-align:center;">
+                    <h2 style="color: #2D5A27; font-size: 1.5rem; margin-top: 10px;">Link Ready! 🚀</h2>
                     
-                    <div style="border-top: 1px dashed #ddd; padding-top:15px; width:100%; text-align:center;">
-                        <canvas id="barcodeCanvasModal"></canvas>
-                        <p style="font-size:0.7rem; margin:0; color:#666; font-weight:600;">BARCODE TRACKING</p>
+                    <div style="background: #ffffff; padding: 15px; border-radius: 20px; border: 1px solid #f0f4f0; display: inline-block; margin-top: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+                        <div id="modal-qr-render"></div>
+                        <p style="font-size: 0.65rem; color: #666; margin-top: 10px; font-weight: 600;">Scan QR Code</p>
                     </div>
 
-                    <div style="background:#f7faf7; padding:12px; border-radius:12px; width:100%; word-break:break-all; font-weight:800; color:var(--primary); font-size: 0.9rem;" id="modal-url">
+                    <hr style="border: 0; border-top: 1px dashed #ddd; margin: 25px 0;">
+
+                    <div style="text-align: center;">
+                        <canvas id="modal-barcode-render"></canvas>
+                        <p style="font-size: 0.65rem; color: #666; margin: 0; font-weight: 600;">Barcode (Internal Tracking)</p>
+                    </div>
+
+                    <div style="background: #f0f4f0; color: #2D5A27; padding: 12px; border-radius: 12px; margin: 20px 0 10px 0; font-weight: 700; font-size: 0.85rem; word-break: break-all; border: 1px solid rgba(45,90,39,0.1);">
                         ${url}
+                    </div>
+
+                    <button onclick="copyAndClose('${url}')" style="background: #2D5A27; color: white; border: none; padding: 12px 0; width: 100%; border-radius: 12px; font-weight: 700; cursor: pointer; font-size: 0.9rem; transition: 0.3s;">
+                        Salin Link
+                    </button>
+
+                    <div style="margin-top: 15px;">
+                        <a href="https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${url}" download="QR_${shortCode}.png" target="_blank" style="color: #2D5A27; text-decoration: none; font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                            ⬇️ Download QR Code
+                        </a>
                     </div>
                 </div>
             `,
-            showCancelButton: true,
-            confirmButtonText: 'Salin Link',
-            confirmButtonColor: '#2D5A27',
-            cancelButtonText: 'Tutup',
-            // KUNCI: Render Barcode tepat saat modal terbuka
             didOpen: () => {
-                JsBarcode("#barcodeCanvasModal", shortCode, {
+                // Render QR Code
+                new QRCode(document.getElementById("modal-qr-render"), {
+                    text: url,
+                    width: 150,
+                    height: 150,
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+
+                // Render Barcode
+                JsBarcode("#modal-barcode-render", shortCode, {
                     format: "CODE128",
                     lineColor: "#2D5A27",
-                    width: 2,
+                    width: 1.8,
                     height: 45,
                     displayValue: true,
                     fontSize: 12
                 });
             }
-        }).then((result) => {
-            if (result.isConfirmed) {
-                navigator.clipboard.writeText(url);
-                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Disalin!', showConfirmButton: false, timer: 1500 });
-            }
         });
     }
 
-    // 2. Fungsi Load Data Tabel
+    // Fungsi Pembantu Salin & Notif
+    function copyAndClose(url) {
+        navigator.clipboard.writeText(url);
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: 'Link disalin!',
+            showConfirmButton: false,
+            timer: 1500
+        });
+    }
+
+    // 2. Fungsi Load Dashboard & Tabel
     async function loadLinks() {
         try {
             const res = await fetch('/api/user/links');
@@ -117,32 +147,30 @@
             links.forEach(link => {
                 totalClicks += link.clicks;
                 const fullUrl = `${window.location.origin}/${link.shortCode}`;
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><a href="/${link.shortCode}" target="_blank" style="color:var(--primary); font-weight:800; text-decoration:none;">/${link.shortCode}</a></td>
-                    <td>
-                        <div class="qr-thumbnail" onclick="showModal('${fullUrl}', 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${fullUrl}', '${link.shortCode}')">
-                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=50x50&data=${fullUrl}" style="width:40px; border-radius:5px; cursor:pointer;">
-                        </div>
-                    </td>
-                    <td><span class="badge" style="background:var(--primary); color:white; padding:2px 8px; border-radius:10px;">${link.clicks}</span></td>
-                    <td><button onclick="deleteLink('${link._id}')" style="background:#ef4444; color:white; border:none; padding:5px 10px; border-radius:8px; cursor:pointer;">Hapus</button></td>
+                list.innerHTML += `
+                    <tr>
+                        <td><a href="/${link.shortCode}" target="_blank" style="color:var(--primary); font-weight:800; text-decoration:none;">/${link.shortCode}</a></td>
+                        <td>
+                            <div class="qr-thumbnail" onclick="showModal('${fullUrl}', '${link.shortCode}')" style="cursor:pointer; opacity:0.8;">
+                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=50x50&data=${fullUrl}" style="width:35px; border-radius:5px;">
+                            </div>
+                        </td>
+                        <td><span class="badge" style="background:var(--primary); color:white; padding:2px 8px; border-radius:10px;">${link.clicks}</span></td>
+                        <td><button onclick="deleteLink('${link._id}')" style="background:#ef44441a; color:#ef4444; border:none; padding:5px 12px; border-radius:8px; cursor:pointer; font-weight:600;">Hapus</button></td>
+                    </tr>
                 `;
-                list.appendChild(tr);
             });
-
             document.getElementById('total-links').innerText = links.length;
             document.getElementById('total-clicks').innerText = totalClicks;
         } catch (err) { console.error(err); }
     }
 
-    // 3. Handling Submit Form dengan Efek Loading
+    // 3. Handling Submit Form Dashboard (Dengan Loading)
     document.getElementById('shorten-form').onsubmit = async (e) => {
         e.preventDefault();
         const longUrl = document.getElementById('longUrl').value;
         const customCode = document.getElementById('customCode').value;
 
-        // TAMPILKAN LOADING (Sama dengan Halaman Utama)
         Swal.fire({
             title: 'Memproses...',
             allowOutsideClick: false,
@@ -157,29 +185,28 @@
             });
             const data = await res.json();
             
-            Swal.close(); // Tutup loading
+            Swal.close();
 
             if (res.ok) {
-                // Tampilkan Modal Berhasil
-                showModal(data.shortUrl, data.qrData, data.shortCode);
+                showModal(data.shortUrl, data.shortCode);
                 document.getElementById('shorten-form').reset();
-                loadLinks(); // Refresh tabel
+                loadLinks();
             } else {
                 Swal.fire({ icon: 'warning', title: 'Gagal', text: data.message });
             }
         } catch (err) {
-            Swal.fire({ icon: 'error', title: 'Error', text: 'Gagal menghubungi server' });
+            Swal.fire({ icon: 'error', title: 'Error', text: 'Server Error' });
         }
     };
 
     async function deleteLink(id) {
-        if(confirm('Hapus link ini?')) {
+        const confirm = await Swal.fire({ title: 'Hapus?', icon: 'warning', showCancelButton: true });
+        if (confirm.isConfirmed) {
             await fetch(`/api/link/${id}`, { method: 'DELETE' });
             loadLinks();
         }
     }
 
-    // Jalankan load pertama kali
     loadLinks();
 </script>
 </body>
