@@ -6,6 +6,7 @@
     <title>PPKS.ly - Smart URL Shortener</title>
     <link rel="stylesheet" href="style.css?v=2.1">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -50,44 +51,60 @@
     </div>
 
     <div class="modal-overlay" id="modalOverlay">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 420px;">
             <span style="position:absolute; right:20px; top:10px; cursor:pointer; font-size:24px; color: var(--accent);" onclick="closeModal()">&times;</span>
             <h2 style="color: var(--primary); margin-top: 10px;">Link Ready! 🚀</h2>
-            <div id="modal-qr-space">
-                <img src="" id="qrImg" style="width:180px; border-radius:15px; border:4px solid var(--bg); margin: 15px 0; image-rendering: pixelated;">
+            
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                <div id="modal-qr-space">
+                    <img src="" id="qrImg" style="width:160px; border-radius:15px; border:4px solid var(--bg); margin-top: 10px; image-rendering: pixelated;">
+                    <p style="font-size: 0.7rem; font-weight: 600; color: #666; margin: 0;">Scan QR Code</p>
+                </div>
+
+                <div id="barcode-section" style="width: 100%; text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ddd;">
+                    <svg id="barcodeCanvas"></svg>
+                    <p style="font-size: 0.7rem; font-weight: 600; color: #666; margin: 0;">Barcode (Internal Tracking)</p>
+                </div>
             </div>
-            <div style="background:var(--bg); padding:12px; border-radius:12px; margin-bottom:15px; word-break:break-all; font-weight:800; color:var(--primary); font-size: 0.9rem;" id="modal-url"></div>
+
+            <div style="background:var(--bg); padding:12px; border-radius:12px; margin:15px 0; word-break:break-all; font-weight:800; color:var(--primary); font-size: 0.9rem;" id="modal-url"></div>
+            
             <button onclick="copyLink()">Salin Link</button>
             <a id="downloadBtn" href="#" download="qr-ppks.png" style="display: block; margin-top: 15px; font-size: 0.8rem; color: var(--primary); font-weight: 600; text-decoration: none;">⬇️ Download QR Code</a>
         </div>
     </div>
 
     <script>
-        // 1. Fungsi Visitor Tracking
+        // 1. Visitor Tracking
         async function trackVisitor() {
-            try {
-                await fetch('/api/visitor/track');
-            } catch (err) { console.log("Visitor tracking failed"); }
+            try { await fetch('/api/visitor/track'); } catch (err) { console.log("Visitor tracking failed"); }
         }
         trackVisitor();
 
-        // 2. Fungsi Modal & Copy
-        function showModal(url, qr) {
+        // 2. Fungsi Modal dengan Barcode Generator
+        function showModal(url, qr, shortCode) {
             document.getElementById('modal-url').innerText = url;
             document.getElementById('qrImg').src = qr;
             document.getElementById('downloadBtn').href = qr;
+
+            // Generate Barcode CODE128 secara dinamis
+            JsBarcode("#barcodeCanvas", shortCode, {
+                format: "CODE128",
+                lineColor: "#2D5A27",
+                width: 2,
+                height: 40,
+                displayValue: true,
+                fontSize: 12
+            });
+
             document.getElementById('modalOverlay').classList.add('active');
         }
 
-        function closeModal() {
-            document.getElementById('modalOverlay').classList.remove('active');
-        }
+        function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
 
         function copyLink() { 
             const urlText = document.getElementById('modal-url').innerText;
             navigator.clipboard.writeText(urlText); 
-            
-            // Notifikasi Kecil (Toast) saat copy berhasil
             Swal.fire({
                 toast: true,
                 position: 'top-end',
@@ -98,7 +115,7 @@
             });
         }
 
-        // 3. Cek Login Status
+        // 3. Status Login
         async function checkStatus() {
             try {
                 const res = await fetch('/api/user/status');
@@ -108,17 +125,16 @@
                     document.getElementById('user-profile').style.display = 'block';
                     document.getElementById('user-name').innerText = data.user.displayName;
                 }
-            } catch (err) { console.log("User not logged in"); }
+            } catch (err) { }
         }
         checkStatus();
 
-        // 4. Handle Submit Form
+        // 4. Form Submission
         document.getElementById('shorten-form').onsubmit = async (e) => {
             e.preventDefault();
             const longUrl = document.getElementById('longUrl').value;
             const customCode = document.getElementById('customCode').value;
             
-            // Tampilkan loading sebentar
             Swal.fire({
                 title: 'Memproses...',
                 allowOutsideClick: false,
@@ -133,25 +149,21 @@
                 });
                 
                 const data = await res.json();
-                Swal.close(); // Tutup loading
+                Swal.close();
 
                 if (res.ok) {
-                    showModal(data.shortUrl, data.qrData);
+                    // data.shortCode didapat dari update app.js sebelumnya
+                    showModal(data.shortUrl, data.qrData, data.shortCode);
                 } else {
-                    // NOTIFIKASI MODERN JIKA NAMA SUDAH DIPAKAI
                     Swal.fire({
                         icon: 'warning',
-                        title: 'Waduh, Nama Terpakai!',
-                        text: data.message || 'Coba gunakan kode unik lainnya ya.',
+                        title: 'Nama Terpakai!',
+                        text: data.message,
                         confirmButtonColor: '#2D5A27'
                     });
                 }
             } catch (err) { 
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Server Error',
-                    text: 'Gagal menghubungi server. Periksa koneksi internetmu.'
-                });
+                Swal.fire({ icon: 'error', title: 'Server Error' });
             }
         };
     </script>

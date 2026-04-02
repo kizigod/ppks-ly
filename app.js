@@ -8,14 +8,13 @@ const session = require('express-session');
 const passport = require('passport');
 const path = require('path');
 
-// IMPORT MODEL (Pastikan file ini ada di folder models)
+// IMPORT MODEL
 const Url = require('./models/Url');
 const User = require('./models/User'); 
 
-// --- INISIALISASI APP (Wajib di Atas Sebelum Pakai app.use atau app.get) ---
 const app = express();
 
-// --- MODEL VISITOR (Sistem Pencegah Crash Vercel) ---
+// --- MODEL VISITOR (Diperbarui untuk Analytics) ---
 const Visitor = mongoose.models.Visitor || mongoose.model('Visitor', new mongoose.Schema({
     ip: String,
     timestamp: { type: Date, default: Date.now }
@@ -92,7 +91,7 @@ passport.deserializeUser(async (id, done) => {
 
 // --- 4. ROUTES ---
 
-// Route Visitor (Ditaruh di sini setelah app didefinisikan)
+// Route Visitor Tracking
 app.get('/api/visitor/track', async (req, res) => {
     try {
         await connectDB();
@@ -101,7 +100,11 @@ app.get('/api/visitor/track', async (req, res) => {
         });
         await newVisitor.save();
         const count = await Visitor.countDocuments();
-        res.json({ totalVisitors: count });
+        // Mengirim total clicks juga untuk dashboard stats
+        const totalClicksResult = await Url.aggregate([{ $group: { _id: null, total: { $sum: "$clicks" } } }]);
+        const totalClicks = totalClicksResult.length > 0 ? totalClicksResult[0].total : 0;
+        
+        res.json({ totalVisitors: count, totalClicks: totalClicks });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -137,6 +140,7 @@ app.delete('/api/link/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// CREATE SHORTLINK
 app.post('/api/shorten', async (req, res) => {
     const { longUrl, customCode } = req.body;
     const shortCode = (customCode && customCode.trim()) || nanoid(6);
@@ -154,12 +158,14 @@ app.post('/api/shorten', async (req, res) => {
 
         const shortUrl = `${OFFICIAL_DOMAIN}/${shortCode}`;
         const qrData = await QRCode.toDataURL(shortUrl);
-        res.json({ shortUrl, qrData });
+        // Note: Barcode di-generate di sisi client (frontend) untuk efisiensi server
+        res.json({ shortUrl, qrData, shortCode }); 
     } catch (err) {
         res.status(500).json({ message: 'Gagal memproses link', error: err.message });
     }
 });
 
+// REDIRECT ROUTE
 app.get('/:code', async (req, res) => {
     const { code } = req.params;
     if (code.includes('.') || ['api', 'auth', 'favicon.ico'].includes(code)) return;
