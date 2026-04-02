@@ -14,7 +14,7 @@ const User = require('./models/User');
 
 const app = express();
 
-// --- MODEL VISITOR (Diperbarui untuk Analytics) ---
+// --- MODEL VISITOR ---
 const Visitor = mongoose.models.Visitor || mongoose.model('Visitor', new mongoose.Schema({
     ip: String,
     timestamp: { type: Date, default: Date.now }
@@ -37,14 +37,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// KONFIGURASI SESSION (Disesuaikan agar tidak logout di localhost)
 app.use(session({
     secret: process.env.SESSION_SECRET || 'sawit-rahasia-usu',
     resave: false,
     saveUninitialized: false,
     proxy: true, 
     cookie: { 
-        secure: true, 
-        sameSite: 'none',
+        // Secure true hanya jika di produksi (HTTPS)
+        secure: process.env.NODE_ENV === 'production', 
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 24 * 60 * 60 * 1000 
     }
 }));
@@ -53,7 +55,9 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // --- 3. GOOGLE OAUTH STRATEGY ---
-const OFFICIAL_DOMAIN = "https://ppks-ly.vercel.app";
+const OFFICIAL_DOMAIN = process.env.NODE_ENV === 'production' 
+    ? "https://ppks-ly.vercel.app" 
+    : "http://localhost:3000";
 
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
@@ -91,7 +95,7 @@ passport.deserializeUser(async (id, done) => {
 
 // --- 4. ROUTES ---
 
-// Route Visitor Tracking
+// Route Visitor Tracking & Stats
 app.get('/api/visitor/track', async (req, res) => {
     try {
         await connectDB();
@@ -99,8 +103,8 @@ app.get('/api/visitor/track', async (req, res) => {
             ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress 
         });
         await newVisitor.save();
+        
         const count = await Visitor.countDocuments();
-        // Mengirim total clicks juga untuk dashboard stats
         const totalClicksResult = await Url.aggregate([{ $group: { _id: null, total: { $sum: "$clicks" } } }]);
         const totalClicks = totalClicksResult.length > 0 ? totalClicksResult[0].total : 0;
         
@@ -116,7 +120,9 @@ app.get('/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/' }),
     (req, res) => res.redirect('/dashboard.html')
 );
-app.get('/logout', (req, res) => req.logout(() => res.redirect('/')));
+app.get('/logout', (req, res) => {
+    req.logout(() => res.redirect('/'));
+});
 
 app.get('/api/user/status', (req, res) => {
     res.json(req.isAuthenticated() ? { loggedIn: true, user: req.user } : { loggedIn: false });
@@ -158,7 +164,8 @@ app.post('/api/shorten', async (req, res) => {
 
         const shortUrl = `${OFFICIAL_DOMAIN}/${shortCode}`;
         const qrData = await QRCode.toDataURL(shortUrl);
-        // Note: Barcode di-generate di sisi client (frontend) untuk efisiensi server
+        
+        // PENTING: Mengirim data lengkap termasuk shortCode untuk Barcode di frontend
         res.json({ shortUrl, qrData, shortCode }); 
     } catch (err) {
         res.status(500).json({ message: 'Gagal memproses link', error: err.message });
@@ -168,7 +175,9 @@ app.post('/api/shorten', async (req, res) => {
 // REDIRECT ROUTE
 app.get('/:code', async (req, res) => {
     const { code } = req.params;
-    if (code.includes('.') || ['api', 'auth', 'favicon.ico'].includes(code)) return;
+    // Hindari redirect jika code adalah file atau rute API
+    if (code.includes('.') || ['api', 'auth', 'favicon.ico', 'dashboard.html'].includes(code)) return;
+    
     try {
         await connectDB();
         const url = await Url.findOne({ shortCode: code });

@@ -6,6 +6,19 @@
     <title>Dashboard PPKS.Ly</title>
     <link rel="stylesheet" href="style.css?v=2.0">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        .qr-thumbnail img {
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            padding: 2px;
+            background: white;
+        }
+    </style>
 </head>
 <body>
     <div class="container dashboard-wide">
@@ -28,82 +41,153 @@
         </div>
 
         <div class="table-wrapper">
-    <table class="link-table">
-        <thead>
-            <tr>
-                <th>Link</th>
-                <th>QR</th>
-                <th>Klik</th>
-                <th>Aksi</th>
-            </tr>
-        </thead>
-        <tbody id="link-list">
-            </tbody>
-    </table>
-</div>
+            <table class="link-table">
+                <thead>
+                    <tr>
+                        <th>Link</th>
+                        <th>Media</th>
+                        <th>Klik</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="link-list"></tbody>
+            </table>
+        </div>
 
-        <div style="text-align: center; margin-top: 30px;"><a href="/logout" style="color: #ef4444; text-decoration: none; font-size: 0.9rem;">Keluar Akun</a></div>
-    </div>
-
-    <div class="modal-overlay" id="modalOverlay">
-        <div class="modal-content">
-            <span style="position:absolute; right:20px; top:10px; cursor:pointer; font-size:24px;" onclick="closeModal()">&times;</span>
-            <h2 style="color: var(--primary);">Link Ready! 🚀</h2>
-            <div id="modal-qr-space"><img src="" id="qrImg" style="width:180px; border-radius:15px; border:4px solid var(--bg);"></div>
-            <div style="background:var(--bg); padding:10px; border-radius:10px; margin:15px 0; word-break:break-all; font-weight:800; color:var(--primary);" id="modal-url"></div>
-            <button onclick="copyLink()">Copy Link</button>
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="/logout" style="color: #ef4444; text-decoration: none; font-size: 0.9rem;">Keluar Akun</a>
         </div>
     </div>
 
     <script>
-        function showModal(url, qr) {
-            document.getElementById('modal-url').innerText = url;
-            document.getElementById('qrImg').src = qr || '';
-            document.getElementById('modalOverlay').classList.add('active');
-        }
-        function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
-        function copyLink() { navigator.clipboard.writeText(document.getElementById('modal-url').innerText); alert("Copied!"); }
+        // 1. Fungsi Pop-up Sukses dengan QR & Barcode
+        function showSuccessModal(url, shortCode) {
+            Swal.fire({
+                title: 'Link Ready! 🚀',
+                html: `
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:15px; padding-top:10px;">
+                        <div id="modal-qr-render"></div>
+                        
+                        <div style="border-top: 1px dashed #ddd; padding-top:15px; width:100%; text-align:center;">
+                            <canvas id="modal-barcode-render"></canvas>
+                            <p style="font-size:0.7rem; margin:0; color:#666; font-weight:600;">BARCODE TRACKING</p>
+                        </div>
 
-        async function loadLinks() {
-            const res = await fetch('/api/user/links');
-            const links = await res.json();
-            const list = document.getElementById('link-list');
-            let clicks = 0; list.innerHTML = '';
+                        <div style="background:#f7faf7; padding:10px; border-radius:10px; width:100%; font-weight:800; color:var(--primary); word-break:break-all;" id="copy-target">
+                            ${url}
+                        </div>
+                    </div>
+                `,
+                confirmButtonText: 'Salin Link',
+                confirmButtonColor: '#2D5A27',
+                didOpen: () => {
+                    // Render QR Code di Modal
+                    new QRCode(document.getElementById("modal-qr-render"), {
+                        text: url,
+                        width: 150,
+                        height: 150
+                    });
 
-            links.forEach(link => {
-                clicks += link.clicks;
-                const fullUrl = `${window.location.origin}/${link.shortCode}`;
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><a href="/${link.shortCode}" target="_blank" style="color:var(--primary); font-weight:800; text-decoration:none;">/${link.shortCode}</a></td>
-                    <td><div class="qr-thumbnail" id="qr-${link._id}" onclick="showModal('${fullUrl}', document.querySelector('#qr-${link._id} img').src)"></div></td>
-                    <td><span class="badge" style="background:var(--primary); color:white; padding:2px 8px; border-radius:10px;">${link.clicks}</span></td>
-                    <td><button onclick="deleteLink('${link._id}')" style="background:#ef4444; color:white; border:none; padding:5px 10px; border-radius:8px; cursor:pointer;">Hapus</button></td>
-                `;
-                list.appendChild(tr);
-                new QRCode(document.getElementById(`qr-${link._id}`), { 
-    text: fullUrl, 
-    width: 100, // Naikkan resolusi internal
-    height: 100, 
-    correctLevel: QRCode.CorrectLevel.H // High error correction agar lebih mudah di-scan
-});
+                    // Render Barcode di Modal
+                    JsBarcode("#modal-barcode-render", shortCode, {
+                        format: "CODE128",
+                        lineColor: "#2D5A27",
+                        width: 2,
+                        height: 50,
+                        displayValue: true
+                    });
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    navigator.clipboard.writeText(url);
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Disalin!', showConfirmButton: false, timer: 1000 });
+                }
             });
-            document.getElementById('total-links').innerText = links.length;
-            document.getElementById('total-clicks').innerText = clicks;
         }
 
+        // 2. Load Data Links
+        async function loadLinks() {
+            try {
+                const res = await fetch('/api/user/links');
+                if (res.status === 401) { window.location.href = '/'; return; }
+                const links = await res.json();
+                const list = document.getElementById('link-list');
+                let totalClicks = 0;
+                list.innerHTML = '';
+
+                links.forEach(link => {
+                    totalClicks += link.clicks;
+                    const fullUrl = `${window.location.origin}/${link.shortCode}`;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><a href="/${link.shortCode}" target="_blank" style="color:var(--primary); font-weight:800; text-decoration:none;">/${link.shortCode}</a></td>
+                        <td>
+                            <div class="qr-thumbnail" id="qr-table-${link._id}" onclick="showSuccessModal('${fullUrl}', '${link.shortCode}')"></div>
+                        </td>
+                        <td><span class="badge" style="background:var(--primary); color:white; padding:2px 8px; border-radius:10px;">${link.clicks}</span></td>
+                        <td><button onclick="deleteLink('${link._id}')" style="background:#ef4444; color:white; border:none; padding:5px 10px; border-radius:8px; cursor:pointer;">Hapus</button></td>
+                    `;
+                    list.appendChild(tr);
+
+                    // Render QR Kecil di tabel
+                    new QRCode(document.getElementById(`qr-table-${link._id}`), { 
+                        text: fullUrl, 
+                        width: 40, 
+                        height: 40 
+                    });
+                });
+
+                document.getElementById('total-links').innerText = links.length;
+                document.getElementById('total-clicks').innerText = totalClicks;
+            } catch (err) {
+                console.error("Gagal memuat links:", err);
+            }
+        }
+
+        // 3. Submit Form
         document.getElementById('shorten-form').onsubmit = async (e) => {
             e.preventDefault();
-            const res = await fetch('/api/shorten', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ longUrl: document.getElementById('longUrl').value, customCode: document.getElementById('customCode').value })
-            });
-            const data = await res.json();
-            if (res.ok) { showModal(data.shortUrl, data.qrData); loadLinks(); }
+            const longUrl = document.getElementById('longUrl').value;
+            const customCode = document.getElementById('customCode').value;
+
+            try {
+                const res = await fetch('/api/shorten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ longUrl, customCode })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    showSuccessModal(data.shortUrl, data.shortCode);
+                    document.getElementById('shorten-form').reset();
+                    loadLinks();
+                } else {
+                    Swal.fire('Gagal', data.message, 'warning');
+                }
+            } catch (err) {
+                Swal.fire('Error', 'Gagal memproses link', 'error');
+            }
         };
 
-        async function deleteLink(id) { if(confirm('Hapus?')) { await fetch(`/api/link/${id}`, { method: 'DELETE' }); loadLinks(); } }
+        // 4. Hapus Link
+        async function deleteLink(id) {
+            const confirmDel = await Swal.fire({
+                title: 'Hapus Link?',
+                text: "Data tidak bisa dikembalikan!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                confirmButtonText: 'Ya, Hapus!'
+            });
+
+            if (confirmDel.isConfirmed) {
+                await fetch(`/api/link/${id}`, { method: 'DELETE' });
+                loadLinks();
+            }
+        }
+
+        // Jalankan saat pertama kali dibuka
         loadLinks();
     </script>
 </body>
