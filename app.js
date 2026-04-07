@@ -38,6 +38,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // KONFIGURASI SESSION (Disesuaikan agar tidak logout di localhost)
+app.set('trust proxy', 1);
 app.use(session({
     secret: process.env.SESSION_SECRET || 'sawit-rahasia-usu',
     resave: false,
