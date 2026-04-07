@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk QR Generator - PPKS.ly</title>
+    <link rel="stylesheet" href="style.css?v=3.5">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body style="background: #f0f2f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px 20px;">
+
+    <div style="max-width: 600px; margin: auto; background: white; padding: 40px; border-radius: 25px; box-shadow: 0 15px 35px rgba(0,0,0,0.1);">
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #2D5A27; margin: 0;">PPKS<span style="color: #E7B10A;">.ly</span></h1>
+            <p style="color: #666; font-weight: 500;">Sistem Registrasi Aset Pohon Massal</p>
+        </div>
+
+        <div style="background: #fafafa; border: 2px dashed #2D5A27; padding: 30px; border-radius: 20px; text-align: center;">
+            <label style="display: block; margin-bottom: 15px; font-weight: bold; color: #333;">Pilih File JSON (Hasil Python):</label>
+            <input type="file" id="file-json" accept=".json" style="margin-bottom: 20px; font-size: 0.9rem;">
+            <button id="btn-gas" onclick="prosesData()" style="width: 100%; padding: 15px; background: #2D5A27; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; transition: 0.3s;">
+                MULAI PROSES BATCH
+            </button>
+        </div>
+
+        <div id="box-progress" style="display: none; margin-top: 30px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span id="txt-persen" style="font-weight: bold; color: #2D5A27;">0%</span>
+                <span id="txt-count" style="font-size: 0.85rem; color: #888;">0/0 Data</span>
+            </div>
+            <div style="width: 100%; background: #eee; height: 12px; border-radius: 6px; overflow: hidden;">
+                <div id="bar-fill" style="width: 0%; height: 100%; background: #E7B10A; transition: 0.2s;"></div>
+            </div>
+            <p style="font-size: 0.7rem; color: #999; margin-top: 10px; text-align: center;">Harap tunggu, sedang mendaftarkan ke database Vercel...</p>
+        </div>
+
+        <div style="margin-top: 30px; text-align: center;">
+            <a href="/dashboard.html" style="color: #2D5A27; text-decoration: none; font-size: 0.9rem; font-weight: 600;">← Kembali ke Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        const jeda = (ms) => new Promise(r => setTimeout(r, ms));
+
+        async function prosesData() {
+            const input = document.getElementById('file-json');
+            const btn = document.getElementById('btn-gas');
+            if (!input.files[0]) return Swal.fire('Error', 'Pilih file JSON dulu!', 'error');
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const dataPohon = JSON.parse(e.target.result);
+                    const total = dataPohon.length;
+                    
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF();
+                    const barisTabel = [];
+
+                    // Reset & Tampilkan Progress
+                    document.getElementById('box-progress').style.display = 'block';
+                    btn.disabled = true;
+                    btn.style.background = '#ccc';
+
+                    for (let i = 0; i < total; i++) {
+                        // Ambil ID Pohon asli (AD04S/043-18)
+                        const idPohon = dataPohon[i].palm_id || dataPohon[i].id_pohon;
+                        
+                        if (idPohon) {
+                            const urlInfo = `${window.location.origin}/info?id=${encodeURIComponent(idPohon)}`;
+
+                            try {
+                                // Hit ke API Shorten
+                                const res = await fetch('/api/shorten', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ longUrl: urlInfo, customCode: idPohon })
+                                });
+                                const jsonRes = await res.json();
+
+                                // Masukkan ke data tabel PDF
+                                const linkFinal = jsonRes.shortUrl || `${window.location.origin}/${idPohon}`;
+                                barisTabel.push([barisTabel.length + 1, idPohon, linkFinal]);
+
+                            } catch (err) { console.error("Error baris " + i); }
+                        }
+
+                        // Update UI
+                        const persen = Math.round(((i + 1) / total) * 100);
+                        document.getElementById('bar-fill').style.width = persen + '%';
+                        document.getElementById('txt-persen').innerText = persen + '%';
+                        document.getElementById('txt-count').innerText = `${i + 1}/${total}`;
+
+                        // JEDA 400ms: SANGAT PENTING untuk Vercel
+                        await jeda(400);
+                    }
+
+                    // DOWNLOAD PDF
+                    if (barisTabel.length > 0) {
+                        pdf.setFontSize(14);
+                        pdf.text("LAPORAN LABEL QR ASET POHON", 105, 15, { align: "center" });
+
+                        pdf.autoTable({
+                            startY: 25,
+                            head: [['NO', 'ID POHON', 'SHORT LINK', 'QR CODE']],
+                            body: barisTabel.map(r => [...r, ""]),
+                            theme: 'grid',
+                            headStyles: { fillColor: [45, 90, 39] },
+                            styles: { valign: 'middle', halign: 'center', minCellHeight: 30, fontSize: 8 },
+                            didDrawCell: (data) => {
+                                if (data.column.index === 3 && data.cell.section === 'body') {
+                                    const link = barisTabel[data.row.index][2];
+                                    const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(link)}`;
+                                    pdf.addImage(qrImg, 'PNG', data.cell.x + 5, data.cell.y + 2, 25, 25);
+                                }
+                            }
+                        });
+
+                        pdf.save(`Batch_QR_PPKS.pdf`);
+                        Swal.fire('Berhasil', 'PDF telah diunduh otomatis!', 'success');
+                    }
+
+                    btn.disabled = false;
+                    btn.style.background = '#2D5A27';
+
+                } catch (err) {
+                    Swal.fire('Error', 'File JSON tidak valid!', 'error');
+                    btn.disabled = false;
+                }
+            };
+            reader.readAsText(input.files[0]);
+        }
+    </script>
+</body>
+</html>
