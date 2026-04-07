@@ -9,8 +9,8 @@ const passport = require('passport');
 const path = require('path');
 
 // IMPORT MODEL
-const Url = require('./models/Url');
-const User = require('./models/User'); 
+const Url = require('./models/UrlModel');
+const User = require('./models/UserModel');
 
 
 
