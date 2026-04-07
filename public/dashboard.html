@@ -8,6 +8,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 
@@ -27,6 +29,13 @@
                 <button type="submit" style="width: auto; padding: 0 30px;">Shorten!</button>
             </form>
         </div>
+
+    
+<div style="text-align: right; margin-bottom: 15px;">
+    <button onclick="generatePDF()" style="width: auto; background: #c2410c; padding: 10px 25px; font-size: 0.8rem; border-radius: 12px;">
+        📄 Download Laporan PDF
+    </button>
+</div>
 
         <div class="stats-container">
             <div class="stat-box">
@@ -101,7 +110,7 @@
                 correctLevel: QRCode.CorrectLevel.H
             });
 
-            // Render Barcode
+            // Untuk Rendering BArcode
             JsBarcode("#barcodeCanvasModal", shortCode, {
                 format: "CODE128",
                 lineColor: "#2D5A27",
@@ -219,6 +228,53 @@
 
         // Inisialisasi awal
         loadLinks();
+
+        async function generatePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    Swal.fire({ title: 'Menyiapkan PDF...', didOpen: () => Swal.showLoading() });
+
+    // Judul Laporan
+    doc.setFontSize(18);
+    doc.setTextColor(45, 90, 39); 
+    doc.text("LAPORAN DATA ASET POHON SAWIT", 105, 20, { align: "center" });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Dicetak: ${new Date().toLocaleString('id-ID')}`, 105, 28, { align: "center" });
+
+    const res = await fetch('/api/user/links');
+    const links = await res.json();
+
+    const bodyData = links.map((link, i) => [
+        i + 1,
+        link.shortCode, 
+        `${window.location.origin}/${link.shortCode}`,
+        link.clicks,
+        "" // Placeholder untuk QR
+    ]);
+
+    doc.autoTable({
+        startY: 35,
+        head: [['No', 'Kode Khusus', 'Link Pelacakan', 'Klik', 'QR Code']],
+        body: bodyData,
+        theme: 'grid',
+        headStyles: { fillColor: [45, 90, 39] },
+        styles: { valign: 'middle', halign: 'center', fontSize: 9 },
+        columnStyles: { 2: { halign: 'left', cellWidth: 50 }, 4: { cellWidth: 35, minCellHeight: 35 } },
+        didDrawCell: (data) => {
+            if (data.column.index === 4 && data.cell.section === 'body') {
+                const link = links[data.row.index];
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${window.location.origin}/${link.shortCode}`;
+                doc.addImage(qrUrl, 'PNG', data.cell.x + 5, data.cell.y + 5, 25, 25);
+            }
+        }
+    });
+
+    Swal.close();
+    doc.save(`Laporan_PPKS_Aset.pdf`);
+}
     </script>
 </body>
 </html>
