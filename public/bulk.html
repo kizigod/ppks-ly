@@ -3,87 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bulk QR Generator - PPKS.ly</title>
-    <link rel="stylesheet" href="style.css?v=4.0">
+    <title>Label QR Minimalis - PPKS.ly</title>
+    <link rel="stylesheet" href="style.css?v=6.0">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 </head>
-<body style="background: #f0f2f0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px 20px;">
+<body style="background: #f4f7f4; font-family: 'Segoe UI', sans-serif; padding: 40px 20px;">
 
-    <div style="max-width: 700px; margin: auto; background: white; padding: 40px; border-radius: 25px; box-shadow: 0 15px 35px rgba(0,0,0,0.1);">
-        <div style="text-align: center; margin-bottom: 30px;">
+    <div style="max-width: 600px; margin: auto; background: white; padding: 35px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+        <div style="text-align: center; margin-bottom: 25px;">
             <h1 style="color: #2D5A27; margin: 0;">PPKS<span style="color: #E7B10A;">.ly</span></h1>
-            <p style="color: #666; font-weight: 500;">Batch QR Code & Label Generator</p>
+            <p style="color: #666; font-size: 0.9rem;">Generator Label QR & Kode Satu Baris</p>
         </div>
 
-        <div style="background: #fafafa; border: 2px dashed #2D5A27; padding: 30px; border-radius: 20px; text-align: center;">
-            <p style="font-size: 0.9rem; color: #555; margin-bottom: 15px;">Upload file <b>master_list.json</b> hasil konversi Python</p>
-            <input type="file" id="file-json" accept=".json" style="margin-bottom: 20px; font-size: 0.9rem; width: 100%;">
-            <button id="btn-proses" onclick="mulaiBatch()" style="width: 100%; padding: 15px; background: #2D5A27; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 1rem;">
-                PROSES & UNDUH PDF LABEL
+        <div style="background: #fafafa; border: 2px dashed #2D5A27; padding: 25px; border-radius: 15px; text-align: center;">
+            <input type="file" id="file-json" accept=".json" style="margin-bottom: 20px; width: 100%;">
+            <button id="btn-proses" onclick="prosesSatuBaris()" style="width: 100%; padding: 15px; background: #2D5A27; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
+                BUAT LABEL QR SEKARANG
             </button>
         </div>
 
-        <div id="progress-box" style="display: none; margin-top: 30px;">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <div id="progress-area" style="display: none; margin-top: 25px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.85rem;">
                 <span id="txt-persen" style="font-weight: bold; color: #2D5A27;">0%</span>
-                <span id="txt-status" style="font-size: 0.85rem; color: #888;">Menyiapkan data...</span>
+                <span id="txt-status">Memproses...</span>
             </div>
-            <div style="width: 100%; background: #eee; height: 12px; border-radius: 6px; overflow: hidden;">
+            <div style="width: 100%; background: #eee; height: 8px; border-radius: 4px; overflow: hidden;">
                 <div id="bar-fill" style="width: 0%; height: 100%; background: #E7B10A; transition: 0.3s;"></div>
             </div>
-            <p style="font-size: 0.75rem; color: #999; margin-top: 10px; text-align: center;">Mohon tunggu, sedang mendaftarkan ID Pohon ke sistem...</p>
-        </div>
-
-        <div style="margin-top: 30px; text-align: center;">
-            <a href="/dashboard.html" style="color: #2D5A27; text-decoration: none; font-size: 0.9rem; font-weight: 600; border-bottom: 2px solid #E7B10A;">← Kembali ke Dashboard</a>
         </div>
     </div>
 
     <script>
         const jeda = (ms) => new Promise(r => setTimeout(r, ms));
 
-        // Fungsi pembantu untuk mencari key tanpa case-sensitive
         function getVal(obj, targetKey) {
             const key = Object.keys(obj).find(k => k.toLowerCase() === targetKey.toLowerCase());
             return key ? obj[key] : "-";
         }
 
-        async function mulaiBatch() {
+        async function prosesSatuBaris() {
             const fileInput = document.getElementById('file-json');
             const btn = document.getElementById('btn-proses');
-            if (!fileInput.files[0]) return Swal.fire('Gagal', 'Pilih file JSON terlebih dahulu.', 'error');
+            if (!fileInput.files[0]) return Swal.fire('Pilih file!', 'Upload file JSON dulu.', 'warning');
 
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
                     const dataPohon = JSON.parse(e.target.result);
-                    const listData = Array.isArray(dataPohon) ? dataPohon : (dataPohon.data || []);
-                    
+                    const list = Array.isArray(dataPohon) ? dataPohon : (dataPohon.data || []);
                     const { jsPDF } = window.jspdf;
                     const doc = new jsPDF();
                     const tableRows = [];
 
-                    document.getElementById('progress-box').style.display = 'block';
+                    document.getElementById('progress-area').style.display = 'block';
                     btn.disabled = true;
-                    btn.style.opacity = "0.6";
 
-                    for (let i = 0; i < listData.length; i++) {
-                        const item = listData[i];
-                        
-                        // Ambil data spesifik yang kamu butuhkan
+                    for (let i = 0; i < list.length; i++) {
+                        const item = list[i];
                         const palmId = getVal(item, 'palm_id');
-                        const expt = getVal(item, 'expt_num');
-                        const crossing = getVal(item, 'crossing');
-                        const row = getVal(item, 'row');
-                        const palm = getVal(item, 'palm');
-
+                        
                         if (palmId !== "-") {
                             const target = `${window.location.origin}/info?id=${encodeURIComponent(palmId)}`;
-                            
                             try {
-                                // Daftarkan ke API Shorten
                                 const res = await fetch('/api/shorten', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
@@ -92,72 +75,56 @@
                                 const hasil = await res.json();
                                 const shortUrl = hasil.shortUrl || `${window.location.origin}/${palmId}`;
 
-                                // Masukkan data ke array tabel PDF
-                                tableRows.push([
-                                    tableRows.length + 1,
-                                    shortUrl,
-                                    { palmId, expt, crossing, row, palm } // Objek info detail
-                                ]);
-                            } catch (err) { console.error("Skip baris " + i); }
+                                // Gabungkan semua kode menjadi satu baris teks
+                                const infoBaris = `${palmId} | ${getVal(item, 'expt_num')} | ${getVal(item, 'crossing')} | R:${getVal(item, 'row')} | P:${getVal(item, 'palm')}`;
+
+                                tableRows.push({ url: shortUrl, text: infoBaris });
+                            } catch (err) {}
                         }
 
-                        // Update Progress UI
-                        const persen = Math.round(((i + 1) / listData.length) * 100);
+                        const persen = Math.round(((i + 1) / list.length) * 100);
                         document.getElementById('bar-fill').style.width = persen + '%';
                         document.getElementById('txt-persen').innerText = persen + '%';
-                        document.getElementById('txt-status').innerText = `${i + 1} / ${listData.length} Pohon`;
-
-                        // Jeda 350ms agar Vercel stabil
+                        document.getElementById('txt-status').innerText = `${i + 1}/${list.length}`;
                         await jeda(350);
                     }
 
-                    // --- PROSES PEMBUATAN PDF ---
                     if (tableRows.length > 0) {
-                        doc.setFontSize(16);
-                        doc.setTextColor(45, 90, 39);
-                        doc.text("LAPORAN LABEL ASET POHON PPKS", 105, 15, { align: "center" });
+                        const bodyData = [];
+                        for (let i = 0; i < tableRows.length; i += 2) {
+                            bodyData.push([tableRows[i], tableRows[i+1] || null]);
+                        }
 
                         doc.autoTable({
-                            startY: 25,
-                            head: [['NO', 'URL SCAN', 'LABEL QR CODE']],
-                            body: tableRows,
+                            startY: 10,
+                            body: bodyData,
                             theme: 'grid',
-                            headStyles: { fillColor: [45, 90, 39] },
-                            styles: { valign: 'middle', halign: 'center', minCellHeight: 65, fontSize: 8 },
-                            columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 45 }, 2: { cellWidth: 85 } },
+                            styles: { minCellHeight: 50, halign: 'center', valign: 'middle' },
+                            columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
                             didDrawCell: (data) => {
-                                if (data.column.index === 2 && data.cell.section === 'body') {
-                                    const info = data.row.raw[2]; 
+                                const info = data.cell.raw;
+                                if (info && data.cell.section === 'body') {
                                     const x = data.cell.x;
                                     const y = data.cell.y;
 
-                                    // 1. Gambar QR Code
-                                    const qrSize = 35;
-                                    const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(data.row.raw[1])}`;
-                                    doc.addImage(qrApi, 'PNG', x + 25, y + 5, qrSize, qrSize);
+                                    // Gambar QR Code
+                                    const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(info.url)}`;
+                                    doc.addImage(qrImg, 'PNG', x + 27.5, y + 4, 35, 35);
 
-                                    // 2. Info Detail di Bawah QR
-                                    doc.setFont("helvetica", "bold");
-                                    doc.setFontSize(8);
-                                    doc.text(`ID: ${info.palmId}`, x + 42.5, y + 45, { align: "center" });
-                                    
-                                    doc.setFont("helvetica", "normal");
+                                    // Teks Satu Baris di Bawah QR
                                     doc.setFontSize(7);
-                                    doc.text(`Expt: ${info.expt}  |  Crossing: ${info.crossing}`, x + 42.5, y + 50, { align: "center" });
-                                    doc.text(`Row: ${info.row}  |  Palm: ${info.palm}`, x + 42.5, y + 54, { align: "center" });
+                                    doc.setFont("helvetica", "bold");
+                                    doc.text(info.text, x + 45, y + 44, { align: "center" });
                                 }
                             }
                         });
 
-                        doc.save(`PPKS_Batch_Labels_${Date.now()}.pdf`);
-                        Swal.fire('Selesai!', 'Data berhasil didaftarkan dan PDF terunduh.', 'success');
+                        doc.save(`Label_QR_SatuBaris_PPKS.pdf`);
+                        Swal.fire('Berhasil', 'Label satu baris siap dicetak!', 'success');
                     }
-
                     btn.disabled = false;
-                    btn.style.opacity = "1";
-
                 } catch (err) {
-                    Swal.fire('Error', 'Format JSON tidak valid atau rusak.', 'error');
+                    Swal.fire('Error', 'Proses gagal.', 'error');
                     btn.disabled = false;
                 }
             };
