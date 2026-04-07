@@ -268,6 +268,65 @@
     Swal.close();
     doc.save(`Laporan_PPKS_Aset.pdf`);
 }
+
+const delay = (ms) => new Promise(res => setTimeout(res, ms));
+
+async function processBulkToPDF() {
+    const file = document.getElementById('bulk-file').files[0];
+    if (!file) return Swal.fire('Pilih file CSV!');
+
+    Swal.fire({ title: 'Memproses...', text: 'Mendaftarkan ID Pohon satu per satu...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const tableData = [];
+            const items = results.data;
+
+            for (let i = 0; i < items.length; i++) {
+                const idPohon = items[i].id_pohon;
+                if (!idPohon) continue;
+
+                // Daftarkan ID Pohon ke Database
+                const res = await fetch('/api/shorten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        longUrl: `${window.location.origin}/info?id=${encodeURIComponent(idPohon)}`, 
+                        customCode: idPohon 
+                    })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    tableData.push([i + 1, idPohon, data.shortUrl]);
+                }
+
+                // JEDA 500ms: Ini kunci agar Vercel tidak Error 500
+                await delay(500); 
+            }
+
+            // Buat Tabel PDF
+            doc.autoTable({
+                head: [['NO', 'ID POHON', 'SHORT LINK', 'QR CODE']],
+                body: tableData.map(row => [...row, ""]),
+                didDrawCell: (data) => {
+                    if (data.column.index === 3 && data.cell.section === 'body') {
+                        const url = tableData[data.row.index][2];
+                        const qr = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(url)}`;
+                        doc.addImage(qr, 'PNG', data.cell.x + 5, data.cell.y + 2, 25, 25);
+                    }
+                }
+            });
+            doc.save('Label_Pohon.pdf');
+            Swal.fire('Selesai!', 'PDF berhasil diunduh.', 'success');
+            loadLinks();
+        }
+    });
+}
     </script>
 </body>
 </html>

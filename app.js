@@ -174,11 +174,13 @@ app.post('/api/shorten', async (req, res) => {
 });
 
 // REDIRECT ROUTE
-app.get('/:code', async (req, res) => {
-    const { code } = req.params;
-    // Hindari redirect jika code adalah file atau rute API
-    if (code.includes('.') || ['api', 'auth', 'favicon.ico', 'dashboard.html'].includes(code)) return;
-    
+app.get('/:code*', async (req, res) => {
+    // Menangkap kode secara utuh (misal: AD04S/043-18)
+    const code = req.params.code + (req.params[0] || "");
+
+    // Jika yang diakses adalah file statis (punya titik), abaikan
+    if (code.includes('.') || code.startsWith('api/')) return;
+
     try {
         await connectDB();
         const url = await Url.findOne({ shortCode: code });
@@ -186,9 +188,9 @@ app.get('/:code', async (req, res) => {
             await Url.updateOne({ _id: url._id }, { $inc: { clicks: 1 } });
             return res.redirect(url.originalUrl);
         }
-        res.status(404).send('<h1>404</h1><p>Link tidak ditemukan.</p>');
+        res.status(404).send("ID Pohon tidak ditemukan.");
     } catch (err) {
-        res.status(500).send(`Server Error: ${err.message}`);
+        res.status(500).send("Server Error");
     }
 });
 
