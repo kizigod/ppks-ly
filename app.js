@@ -199,5 +199,6 @@ app.get('/:code*', async (req, res) => {
 module.exports = app;
 
 if (process.env.NODE_ENV !== 'production') {
-    app.listen(3000, () => console.log(`Server jalan di http://localhost:3000`));
+    app.listen(3000, () => console.log('Server jalan di port 3000'));
 }
+module.exports = app;
