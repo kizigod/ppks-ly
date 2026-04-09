@@ -1,5 +1,4 @@
 require('dotenv').config();
-const QRCode = require('qrcode'); 
 const express = require('express');
 const mongoose = require('mongoose');
 const { nanoid } = require('nanoid');
@@ -7,12 +6,12 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
 const passport = require('passport');
 const path = require('path');
+const { createCanvas, loadImage } = require('canvas'); 
+const QRCode = require('qrcode'); 
 
 // IMPORT MODEL
 const Url = require('./models/UrlModel');
 const User = require('./models/UserModel');
-
-
 
 const app = express();
 
@@ -39,7 +38,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// KONFIGURASI SESSION (Disesuaikan agar tidak logout di localhost)
 app.set('trust proxy', 1);
 app.use(session({
     secret: process.env.SESSION_SECRET || 'sawit-rahasia-usu',
@@ -47,7 +45,6 @@ app.use(session({
     saveUninitialized: false,
     proxy: true, 
     cookie: { 
-        // Secure true hanya jika di produksi (HTTPS)
         secure: process.env.NODE_ENV === 'production', 
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 24 * 60 * 60 * 1000 
@@ -58,16 +55,16 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // --- 3. GOOGLE OAUTH STRATEGY ---
-const OFFICIAL_DOMAIN = process.env.NODE_ENV === 'production' 
-    ? "https://ppks-ly.vercel.app" 
-    : "http://localhost:3000";
+const OFFICIAL_DOMAIN = process.env.DOMAIN || "http://localhost:3000";
 
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: `${OFFICIAL_DOMAIN}/auth/google/callback`,
-    proxy: true
-}, async (accessToken, refreshToken, profile, done) => {
+    // HARUS pakai process.env.DOMAIN, JANGAN "/auth/google/callback" saja
+    callbackURL: process.env.DOMAIN + "/auth/google/callback", 
+    proxy: true // WAJIB TRUE
+}, 
+async (accessToken, refreshToken, profile, done) => {
     try {
         await connectDB();
         let user = await User.findOne({ googleId: profile.id });
@@ -96,60 +93,53 @@ passport.deserializeUser(async (id, done) => {
     }
 });
 
-// --- 4. ROUTES ---
-
-// Route Visitor Tracking & Stats
-app.get('/api/visitor/track', async (req, res) => {
+// --- FUNGSI GENERATE QR DENGAN LOGO (Format JPEG) ---
+// --- FUNGSI GENERATE QR DENGAN LOGO (Versi Kebal) ---
+async function generateQRWithLogo(text) {
     try {
-        await connectDB();
-        const newVisitor = new Visitor({ 
-            ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress 
+        // 1. Buat QR Code jadi gambar Base64 (Virtual Image)
+        const qrBase64 = await QRCode.toDataURL(text, {
+            errorCorrectionLevel: 'H', // Level High agar QR tetap terbaca meski ketutupan logo
+            margin: 2,
+            width: 400, // Kunci ukuran tetap 400
+            color: { dark: '#000000', light: '#ffffff' }
         });
-        await newVisitor.save();
+
+        // 2. Load gambar QR dan gambar Logo secara bersamaan
+        const qrImage = await loadImage(qrBase64);
+        const logoPath = path.join(__dirname, 'public', 'images', 'logo-ppks.png');
+        const logoImage = await loadImage(logoPath);
+
+        // 3. Siapkan Kanvas Baru (Ini kanvas utama kita)
+        const canvas = createCanvas(400, 400);
+        const ctx = canvas.getContext('2d');
+
+        // 4. Tempel QR Code sebagai Background
+        ctx.drawImage(qrImage, 0, 0, 400, 400);
+
+        // 5. Hitung Posisi Logo di Tengah
+        const logoSize = 400 * 0.25; // Logo ukuran 25% dari QR
+        const x = (400 - logoSize) / 2;
+        const y = (400 - logoSize) / 2;
+
+        // 6. Buat kotak putih di tengah agar QR tidak nabrak logo
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(x - 5, y - 5, logoSize + 10, logoSize + 10);
         
-        const count = await Visitor.countDocuments();
-        const totalClicksResult = await Url.aggregate([{ $group: { _id: null, total: { $sum: "$clicks" } } }]);
-        const totalClicks = totalClicksResult.length > 0 ? totalClicksResult[0].total : 0;
+        // 7. Tempel Logonya di atas kotak putih
+        ctx.drawImage(logoImage, x, y, logoSize, logoSize);
+
+        // Selesai! Ubah ke JPEG dan kirim ke Frontend
+        return canvas.toDataURL('image/jpeg', 0.9);
         
-        res.json({ totalVisitors: count, totalClicks: totalClicks });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    } catch (error) {
+        console.error("⚠️ Gagal membuat QR Berlogo:", error.message);
+        // Fallback: Kalau logo gagal dimuat, kirim QR polos aja
+        return QRCode.toDataURL(text, { width: 400, margin: 2 });
     }
-});
+}
 
-// Auth Routes
-app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-app.get('/auth/google/callback', 
-    passport.authenticate('google', { failureRedirect: '/' }),
-    (req, res) => res.redirect('/dashboard.html')
-);
-app.get('/logout', (req, res) => {
-    req.logout(() => res.redirect('/'));
-});
-
-app.get('/api/user/status', (req, res) => {
-    res.json(req.isAuthenticated() ? { loggedIn: true, user: req.user } : { loggedIn: false });
-});
-
-app.get('/api/user/links', async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Harus login' });
-    try {
-        await connectDB();
-        const links = await Url.find({ userId: req.user._id }).sort({ createdAt: -1 });
-        res.json(links);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.delete('/api/link/:id', async (req, res) => {
-    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Harus login' });
-    try {
-        await connectDB();
-        await Url.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
-        res.json({ message: 'Link dihapus' });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// CREATE SHORTLINK
+// --- 4. ROUTES ---
 app.post('/api/shorten', async (req, res) => {
     const { longUrl, customCode } = req.body;
     const shortCode = (customCode && customCode.trim()) || nanoid(6);
@@ -166,23 +156,42 @@ app.post('/api/shorten', async (req, res) => {
         await newUrl.save();
 
         const shortUrl = `${OFFICIAL_DOMAIN}/${shortCode}`;
-        const qrData = await QRCode.toDataURL(shortUrl);
+        const qrData = await generateQRWithLogo(shortUrl); 
         
-        // PENTING: Mengirim data lengkap termasuk shortCode untuk Barcode di frontend
         res.json({ shortUrl, qrData, shortCode }); 
-    } catch (err) {
-        res.status(500).json({ message: 'Gagal memproses link', error: err.message });
-    }
+    } catch (err) { res.status(500).json({ message: 'Gagal memproses link', error: err.message }); }
 });
 
-// REDIRECT ROUTE
+// Route lainnya (Visitor, Auth, Redirect)
+app.get('/api/visitor/track', async (req, res) => {
+    try {
+        await connectDB();
+        const newVisitor = new Visitor({ ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+        await newVisitor.save();
+        const count = await Visitor.countDocuments();
+        const totalClicksResult = await Url.aggregate([{ $group: { _id: null, total: { $sum: "$clicks" } } }]);
+        const totalClicks = totalClicksResult.length > 0 ? totalClicksResult[0].total : 0;
+        res.json({ totalVisitors: count, totalClicks: totalClicks });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+app.get('/auth/google/callback', passport.authenticate('google', { failureRedirect: '/' }), (req, res) => res.redirect('/dashboard.html'));
+app.get('/logout', (req, res) => { req.logout(() => res.redirect('/')); });
+app.get('/api/user/status', (req, res) => { res.json(req.isAuthenticated() ? { loggedIn: true, user: req.user } : { loggedIn: false }); });
+
+app.get('/api/user/links', async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: 'Harus login' });
+    try {
+        await connectDB();
+        const links = await Url.find({ userId: req.user._id }).sort({ createdAt: -1 });
+        res.json(links);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/:code*', async (req, res) => {
-    // Menangkap kode secara utuh (misal: AD04S/043-18)
     const code = req.params.code + (req.params[0] || "");
-
-    // Jika yang diakses adalah file statis (punya titik), abaikan
     if (code.includes('.') || code.startsWith('api/')) return;
-
     try {
         await connectDB();
         const url = await Url.findOne({ shortCode: code });
@@ -191,14 +200,16 @@ app.get('/:code*', async (req, res) => {
             return res.redirect(url.originalUrl);
         }
         res.status(404).send("ID Pohon tidak ditemukan.");
-    } catch (err) {
-        res.status(500).send("Server Error");
-    }
+    } catch (err) { res.status(500).send("Server Error"); }
 });
 
-module.exports = app;
+app.get('/test-qr', async (req, res) => {
+    // Kita tes buat satu QR Code secara langsung
+    const qrTest = await generateQRWithLogo("https://ppksly.idnusa.space/TEST");
+    res.send(`<h1>Tes QR Code Backend</h1><img src="${qrTest}" style="border: 1px solid black;">`);
+});
 
-if (process.env.NODE_ENV !== 'production') {
-    app.listen(3000, () => console.log('Server jalan di port 3000'));
-}
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server jalan di port ${PORT}`));
+
 module.exports = app;

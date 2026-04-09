@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Label QR Minimalis - PPKS.ly</title>
+    <title>Label QR Bulk - PPKS.ly</title>
     <link rel="stylesheet" href="style.css?v=6.0">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -14,7 +14,7 @@
     <div style="max-width: 600px; margin: auto; background: white; padding: 35px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
         <div style="text-align: center; margin-bottom: 25px;">
             <h1 style="color: #2D5A27; margin: 0;">PPKS<span style="color: #E7B10A;">.ly</span></h1>
-            <p style="color: #666; font-size: 0.9rem;">Generator Label QR & Kode Satu Baris</p>
+            <p style="color: #666; font-size: 0.9rem;">Generator Label Bulk QR berlogo</p>
         </div>
 
         <div style="background: #fafafa; border: 2px dashed #2D5A27; padding: 25px; border-radius: 15px; text-align: center;">
@@ -35,101 +35,148 @@
         </div>
     </div>
 
-    <script>
-        const jeda = (ms) => new Promise(r => setTimeout(r, ms));
+  <script>
+    const jeda = (ms) => new Promise(r => setTimeout(r, ms));
 
-        function getVal(obj, targetKey) {
-            const key = Object.keys(obj).find(k => k.toLowerCase() === targetKey.toLowerCase());
-            return key ? obj[key] : "-";
+    function getVal(obj, targetKey) {
+        const key = Object.keys(obj).find(k => k.toLowerCase() === targetKey.toLowerCase());
+        return key ? obj[key] : "-";
+    }
+
+    // Fungsi tambahan untuk mengubah URL gambar menjadi Base64 (Untuk Fallback)
+    async function getBase64ImageFromUrl(imageUrl) {
+        try {
+            const res = await fetch(imageUrl);
+            const blob = await res.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.addEventListener("load", () => resolve(reader.result), false);
+                reader.onerror = () => reject(this);
+                reader.readAsDataURL(blob);
+            });
+        } catch (e) {
+            return null;
         }
+    }
 
-        async function prosesSatuBaris() {
-            const fileInput = document.getElementById('file-json');
-            const btn = document.getElementById('btn-proses');
-            if (!fileInput.files[0]) return Swal.fire('Pilih file!', 'Upload file JSON dulu.', 'warning');
+    async function prosesSatuBaris() {
+        const fileInput = document.getElementById('file-json');
+        const btn = document.getElementById('btn-proses');
+        if (!fileInput.files[0]) return Swal.fire('Pilih file!', 'Upload file JSON dulu.', 'warning');
 
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                try {
-                    const dataPohon = JSON.parse(e.target.result);
-                    const list = Array.isArray(dataPohon) ? dataPohon : (dataPohon.data || []);
-                    const { jsPDF } = window.jspdf;
-                    const doc = new jsPDF();
-                    const tableRows = [];
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const dataPohon = JSON.parse(e.target.result);
+                const list = Array.isArray(dataPohon) ? dataPohon : (dataPohon.data || []);
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const tableRows = [];
 
-                    document.getElementById('progress-area').style.display = 'block';
-                    btn.disabled = true;
+                document.getElementById('progress-area').style.display = 'block';
+                btn.disabled = true;
 
-                    for (let i = 0; i < list.length; i++) {
-                        const item = list[i];
-                        const palmId = getVal(item, 'palm_id');
-                        
-                        if (palmId !== "-") {
-                            const target = `${window.location.origin}/info?id=${encodeURIComponent(palmId)}`;
-                            try {
-                                const res = await fetch('/api/shorten', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ longUrl: target, customCode: palmId })
-                                });
-                                const hasil = await res.json();
-                                const shortUrl = hasil.shortUrl || `${window.location.origin}/${palmId}`;
+                for (let i = 0; i < list.length; i++) {
+                    const item = list[i];
+                    const palmId = getVal(item, 'palm_id');
+                    
+                    if (palmId !== "-") {
+                        const target = `${window.location.origin}/info?id=${encodeURIComponent(palmId)}`;
+                        try {
+                            const res = await fetch('/api/shorten', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ longUrl: target, customCode: palmId })
+                            });
+                            const hasil = await res.json();
 
-                                // Gabungkan semua kode menjadi satu baris teks
-                                const infoBaris = `${palmId} | ${getVal(item, 'expt_num')} | ${getVal(item, 'crossing')} | R:${getVal(item, 'row')} | P:${getVal(item, 'palm')}`;
+                            let finalQrData = hasil.qrData;
 
-                                tableRows.push({ url: shortUrl, text: infoBaris });
-                            } catch (err) {}
-                        }
-
-                        const persen = Math.round(((i + 1) / list.length) * 100);
-                        document.getElementById('bar-fill').style.width = persen + '%';
-                        document.getElementById('txt-persen').innerText = persen + '%';
-                        document.getElementById('txt-status').innerText = `${i + 1}/${list.length}`;
-                        await jeda(350);
-                    }
-
-                    if (tableRows.length > 0) {
-                        const bodyData = [];
-                        for (let i = 0; i < tableRows.length; i += 2) {
-                            bodyData.push([tableRows[i], tableRows[i+1] || null]);
-                        }
-
-                        doc.autoTable({
-                            startY: 10,
-                            body: bodyData,
-                            theme: 'grid',
-                            styles: { minCellHeight: 50, halign: 'center', valign: 'middle' },
-                            columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
-                            didDrawCell: (data) => {
-                                const info = data.cell.raw;
-                                if (info && data.cell.section === 'body') {
-                                    const x = data.cell.x;
-                                    const y = data.cell.y;
-
-                                    // Gambar QR Code
-                                    const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(info.url)}`;
-                                    doc.addImage(qrImg, 'PNG', x + 27.5, y + 4, 35, 35);
-
-                                    // Teks Satu Baris di Bawah QR
-                                    doc.setFontSize(7);
-                                    doc.setFont("helvetica", "bold");
-                                    doc.text(info.text, x + 45, y + 44, { align: "center" });
-                                }
+                            // JIKA DARI BACKEND KOSONG/GAGAL, KITA AMBIL QR STANDAR
+                            if (!finalQrData || !finalQrData.startsWith('data:image')) {
+                                console.warn(`QR Backend gagal untuk ${palmId}, menggunakan QR standar.`);
+                                const fallbackUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(hasil.shortUrl)}`;
+                                finalQrData = await getBase64ImageFromUrl(fallbackUrl);
                             }
-                        });
 
-                        doc.save(`Label_QR_SatuBaris_PPKS.pdf`);
-                        Swal.fire('Berhasil', 'Label satu baris siap dicetak!', 'success');
+                            tableRows.push({ 
+                                text: `${palmId} | R:${getVal(item, 'row')} | P:${getVal(item, 'palm')}`, 
+                                qrString: finalQrData // Pastikan namanya qrString
+                            });
+                        } catch (err) { console.error("Fetch API Error:", err); }
                     }
-                    btn.disabled = false;
-                } catch (err) {
-                    Swal.fire('Error', 'Proses gagal.', 'error');
-                    btn.disabled = false;
+                    
+                    const persen = Math.round(((i + 1) / list.length) * 100);
+                    document.getElementById('bar-fill').style.width = persen + '%';
+                    document.getElementById('txt-persen').innerText = persen + '%';
+                    document.getElementById('txt-status').innerText = `${i + 1}/${list.length}`;
+                    
+                    await jeda(200); 
                 }
-            };
-            reader.readAsText(fileInput.files[0]);
-        }
-    </script>
+
+                if (tableRows.length > 0) {
+                    const bodyData = [];
+                    for (let i = 0; i < tableRows.length; i += 2) {
+                        bodyData.push([
+                            { content: "", customData: tableRows[i] }, 
+                            { content: "", customData: tableRows[i+1] || null }
+                        ]);
+                    }
+
+                    doc.autoTable({
+                        startY: 10,
+                        body: bodyData,
+                        theme: 'grid',
+                        styles: { minCellHeight: 55, lineWidth: 0.1 },
+                        columnStyles: { 0: { cellWidth: 90 }, 1: { cellWidth: 90 } },
+                        didDrawCell: function(data) {
+                            const cellInfo = data.cell.raw ? data.cell.raw.customData : null;
+                            if (cellInfo && data.cell.section === 'body') {
+                                const x = data.cell.x;
+                                const y = data.cell.y;
+                                const w = data.cell.width;
+                                const h = data.cell.height;
+
+                                // 1. Garis Gunting
+                                doc.setLineDash([2, 1], 0);
+                                doc.setDrawColor(120, 120, 120);
+                                doc.rect(x, y, w, h);
+                                doc.setLineDash([], 0);
+
+                                // 2. GAMBAR QR CODE (Format Otomatis)
+                                if (cellInfo.qrString) {
+                                    try {
+                                        // Hapus 'JPEG' agar jsPDF mendeteksi otomatis dari data:image/...
+                                        doc.addImage(cellInfo.qrString, x + 27.5, y + 4, 35, 35);
+                                    } catch(e) {
+                                        console.error("Gagal tempel gambar di jsPDF:", e);
+                                    }
+                                }
+
+                                // 3. Teks Info
+                                doc.setFontSize(7);
+                                doc.setFont("helvetica", "bold");
+                                doc.setTextColor(0,0,0);
+                                doc.text(cellInfo.text, x + 45, y + 46, { align: "center" });
+                                
+                                // 4. Ikon Gunting
+                                doc.setFontSize(6);
+                                doc.text("✂", x + 2, y + 4);
+                            }
+                        }
+                    });
+                    doc.save(`Label_Bulk_PPKS.pdf`);
+                    Swal.fire('Berhasil', 'PDF QR siap dicetak!', 'success');
+                }
+                btn.disabled = false;
+            } catch (err) {
+                console.error(err);
+                Swal.fire('Error', 'Gagal memproses file.', 'error');
+                btn.disabled = false;
+            }
+        };
+        reader.readAsText(fileInput.files[0]);
+    }
+</script>
 </body>
 </html>
